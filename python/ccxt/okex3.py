@@ -1520,16 +1520,16 @@ class okex3(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        for i in range(0, len(response)):
-            balance = response[i]
+        items = response if isinstance(response, list) else [response]
+        for i in range(0, len(items)):
+            balance = items[i].copy()
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['total'] = self.safe_string(balance, 'balance')
-            account['used'] = self.safe_string(balance, 'hold')
-            account['free'] = self.safe_string(balance, 'available')
-            result[code] = account
-        return self.parse_balance(result)
+            balance['total'] = self.parse_number(balance['balance'])
+            balance['used'] = self.parse_number(balance['hold'])
+            balance['free'] = self.parse_number(balance['available'])
+            result[code] = balance
+        return result
 
     def parse_margin_balance(self, response):
         #
@@ -1567,8 +1567,9 @@ class okex3(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        for i in range(0, len(response)):
-            balance = response[i]
+        items = response if isinstance(response, list) else [response]
+        for i in range(0, len(items)):
+            balance = items[i].copy()
             marketId = self.safe_string(balance, 'instrument_id')
             market = self.safe_value(self.markets_by_id, marketId)
             symbol = None
@@ -1579,32 +1580,14 @@ class okex3(Exchange):
                 symbol = base + '/' + quote
             else:
                 symbol = market['symbol']
-            omittedBalance = self.omit(balance, [
-                'instrument_id',
-                'liquidation_price',
-                'product_id',
-                'risk_rate',
-                'margin_ratio',
-                'maint_margin_ratio',
-                'tiers',
-            ])
-            keys = list(omittedBalance.keys())
-            accounts = {}
-            for k in range(0, len(keys)):
-                key = keys[k]
-                marketBalance = balance[key]
-                if key.find(':') >= 0:
-                    parts = key.split(':')
-                    currencyId = parts[1]
-                    code = self.safe_currency_code(currencyId)
-                    account = self.account()
-                    account['total'] = self.safe_string(marketBalance, 'balance')
-                    account['used'] = self.safe_string(marketBalance, 'hold')
-                    account['free'] = self.safe_string(marketBalance, 'available')
-                    accounts[code] = account
-                else:
-                    raise NotSupported(self.id + ' margin balance response format has changed!')
-            result[symbol] = self.parse_balance(accounts)
+            parts = symbol.split('/')
+            for currency in parts:
+                balance[currency]=balance['currency:{}'.format(currency)]
+                balance[currency]['total'] = self.parse_number(balance[currency]['balance'])
+                balance[currency]['used'] = self.parse_number(balance[currency]['hold'])
+                balance[currency]['free'] = self.parse_number(balance[currency]['available'])
+                del balance['currency:{}'.format(currency)]
+            result[symbol] = balance
         return result
 
     def parse_futures_balance(self, response):
@@ -1652,31 +1635,8 @@ class okex3(Exchange):
             id = ids[i]
             code = self.safe_currency_code(id)
             balance = self.safe_value(info, id, {})
-            account = self.account()
-            totalAvailBalance = self.safe_string(balance, 'total_avail_balance')
-            if self.safe_string(balance, 'margin_mode') == 'fixed':
-                contracts = self.safe_value(balance, 'contracts', [])
-                free = totalAvailBalance
-                for i in range(0, len(contracts)):
-                    contract = contracts[i]
-                    fixedBalance = self.safe_string(contract, 'fixed_balance')
-                    realizedPnl = self.safe_string(contract, 'realized_pnl')
-                    marginFrozen = self.safe_string(contract, 'margin_frozen')
-                    marginForUnfilled = self.safe_string(contract, 'margin_for_unfilled')
-                    margin = Precise.string_sub(Precise.string_sub(Precise.string_add(fixedBalance, realizedPnl), marginFrozen), marginForUnfilled)
-                    free = Precise.string_add(free, margin)
-                account['free'] = free
-            else:
-                realizedPnl = self.safe_string(balance, 'realized_pnl')
-                unrealizedPnl = self.safe_string(balance, 'unrealized_pnl')
-                marginFrozen = self.safe_string(balance, 'margin_frozen')
-                marginForUnfilled = self.safe_string(balance, 'margin_for_unfilled')
-                positive = Precise.string_add(Precise.string_add(totalAvailBalance, realizedPnl), unrealizedPnl)
-                account['free'] = Precise.string_sub(Precise.string_sub(positive, marginFrozen), marginForUnfilled)
-            # it may be incorrect to use total, free and used for swap accounts
-            account['total'] = self.safe_string(balance, 'equity')
-            result[code] = account
-        return self.parse_balance(result)
+            result[code] = balance
+        return result
 
     def parse_swap_balance(self, response):
         #
@@ -1702,22 +1662,21 @@ class okex3(Exchange):
         result = {'info': response}
         timestamp = None
         info = self.safe_value(response, 'info', [])
+        info = info if isinstance(info, list) else [info]
         for i in range(0, len(info)):
-            balance = info[i]
+            balance = info[i].copy()
             marketId = self.safe_string(balance, 'instrument_id')
             symbol = marketId
             if marketId in self.markets_by_id:
                 symbol = self.markets_by_id[marketId]['symbol']
             balanceTimestamp = self.parse8601(self.safe_string(balance, 'timestamp'))
             timestamp = balanceTimestamp if (timestamp is None) else max(timestamp, balanceTimestamp)
-            account = self.account()
-            # it may be incorrect to use total, free and used for swap accounts
-            account['total'] = self.safe_string(balance, 'equity')
-            account['free'] = self.safe_string(balance, 'total_avail_balance')
-            result[symbol] = account
+            balance['total'] = self.parse_number(balance['equity'])
+            balance['free'] = self.parse_number(balance['total_avail_balance'])
+            result[symbol] = balance
         result['timestamp'] = timestamp
         result['datetime'] = self.iso8601(timestamp)
-        return self.parse_balance(result)
+        return result
 
     def fetch_balance(self, params={}):
         defaultType = self.safe_string_2(self.options, 'fetchBalance', 'defaultType')
@@ -1725,10 +1684,23 @@ class okex3(Exchange):
         if type is None:
             raise ArgumentsRequired(self.id + " fetchBalance() requires a type parameter(one of 'account', 'spot', 'margin', 'futures', 'swap')")
         self.load_markets()
-        suffix = 'Wallet' if (type == 'account') else 'Accounts'
-        method = type + 'Get' + suffix
+        if type == 'spot' and 'currency' in params:
+            method = 'spotGetAccountsCurrency'
+        elif type == 'margin' and 'instrument_id' in params:
+            market = self.market(params['instrument_id'])
+            params['instrument_id'] = market['id']
+            method = 'marginGetAccountsInstrumentId'
+        elif type == 'swap' and 'instrument_id' in params:
+            method = 'swapGetInstrumentIdAccounts'
+        elif type == 'futures' and 'instrument_id' in params:
+            method = 'futureGetAccountsUnderlying'
+        else:
+            suffix = 'Wallet' if (type == 'account') else 'Accounts'
+            method = type + 'Get' + suffix
         query = self.omit(params, 'type')
         response = getattr(self, method)(query)
+        if type == 'margin' and 'instrument_id' in params:
+            response['instrument_id'] = params['instrument_id']
         #
         # account
         #
