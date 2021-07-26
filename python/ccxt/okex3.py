@@ -1629,12 +1629,37 @@ class okex3(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        info = self.safe_value(response, 'info', {})
-        ids = list(info.keys())
-        for i in range(0, len(ids)):
-            id = ids[i]
-            code = self.safe_currency_code(id)
-            balance = self.safe_value(info, id, {})
+        if 'info' in response:
+            info = self.safe_value(response, 'info', {})
+            items = info.values()
+        else:
+            items = [response]
+            
+        for item in items:
+            balance = item.copy()
+            code = self.safe_string(balance, 'underlying')
+            totalAvailBalance = self.safe_string(balance, 'total_avail_balance')
+            if self.safe_string(balance, 'margin_mode') == 'fixed':
+                contracts = self.safe_value(balance, 'contracts', [])
+                free = totalAvailBalance
+                for i in range(0, len(contracts)):
+                    contract = contracts[i]
+                    fixedBalance = self.safe_string(contract, 'fixed_balance')
+                    realizedPnl = self.safe_string(contract, 'realized_pnl')
+                    marginFrozen = self.safe_string(contract, 'margin_frozen')
+                    marginForUnfilled = self.safe_string(contract, 'margin_for_unfilled')
+                    margin = Precise.string_sub(Precise.string_sub(Precise.string_add(fixedBalance, realizedPnl), marginFrozen), marginForUnfilled)
+                    free = Precise.string_add(free, margin)
+                balance['free'] = free
+            else:
+                realizedPnl = self.safe_string(balance, 'realized_pnl')
+                unrealizedPnl = self.safe_string(balance, 'unrealized_pnl')
+                marginFrozen = self.safe_string(balance, 'margin_frozen')
+                marginForUnfilled = self.safe_string(balance, 'margin_for_unfilled')
+                positive = Precise.string_add(Precise.string_add(totalAvailBalance, realizedPnl), unrealizedPnl)
+                balance['free'] = Precise.string_sub(Precise.string_sub(positive, marginFrozen), marginForUnfilled)
+            balance['free'] = self.parse_number(balance['free'])
+            balance['total'] = self.parse_number(balance['equity'])
             result[code] = balance
         return result
 
@@ -1692,8 +1717,8 @@ class okex3(Exchange):
             method = 'marginGetAccountsInstrumentId'
         elif type == 'swap' and 'instrument_id' in params:
             method = 'swapGetInstrumentIdAccounts'
-        elif type == 'futures' and 'instrument_id' in params:
-            method = 'futureGetAccountsUnderlying'
+        elif type == 'futures' and 'underlying' in params:
+            method = 'futuresGetAccountsUnderlying'
         else:
             suffix = 'Wallet' if (type == 'account') else 'Accounts'
             method = type + 'Get' + suffix
