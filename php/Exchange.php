@@ -36,7 +36,7 @@ use Elliptic\EdDSA;
 use BN\BN;
 use Exception;
 
-$version = '1.53.68';
+$version = '1.53.72';
 
 // rounding mode
 const TRUNCATE = 0;
@@ -55,7 +55,7 @@ const PAD_WITH_ZERO = 1;
 
 class Exchange {
 
-    const VERSION = '1.53.68';
+    const VERSION = '1.53.72';
 
     private static $base58_alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     private static $base58_encoder = null;
@@ -292,10 +292,8 @@ class Exchange {
         'fetchMarkets' => 'fetch_markets',
         'fetchOrderStatus' => 'fetch_order_status',
         'commonCurrencyCode' => 'common_currency_code',
-        'currencyId' => 'currency_id',
         'marketId' => 'market_id',
         'marketIds' => 'market_ids',
-        'currencyIds' => 'currency_ids',
         'implodeHostname' => 'implode_hostname',
         'parseBidAsk' => 'parse_bid_ask',
         'parseBidsAsks' => 'parse_bids_asks',
@@ -2426,25 +2424,6 @@ class Exchange {
         return $this->safe_string($this->commonCurrencies, $currency, $currency);
     }
 
-    public function currency_id($commonCode) {
-        if (!$this->currencies) {
-            throw new ExchangeError($this->id . ' currencies not loaded');
-        }
-
-        if (array_key_exists($commonCode, $this->currencies)) {
-            return $this->currencies[$commonCode]['id'];
-        }
-
-        $currencyIds = array();
-        $distinct = is_array($this->commonCurrencies) ? array_keys($this->commonCurrencies) : array();
-        for ($i = 0; $i < count($distinct); $i++) {
-            $k = $distinct[$i];
-            $currencyIds[$this->commonCurrencies[$k]] = $k;
-        }
-
-        return $this->safe_string($currencyIds, $commonCode, $commonCode);
-    }
-
     public function precision_from_string($string) {
         $parts = explode('.', preg_replace('/0+$/', '', $string));
         return (count($parts) > 1) ? strlen($parts[1]) : 0;
@@ -2481,15 +2460,15 @@ class Exchange {
         if (!isset($this->markets)) {
             throw new ExchangeError($this->id . ' markets not loaded');
         }
-        if ((gettype($symbol) === 'string') && isset($this->markets[$symbol])) {
-            return $this->markets[$symbol];
+        if (gettype($symbol) === 'string') {
+            if (isset($this->markets[$symbol])) {
+                return $this->markets[$symbol];
+            } elseif (isset($this->markets_by_id)) {
+                return $this->markets_by_id[$symbol];
+            }
         }
 
         throw new BadSymbol($this->id . ' does not have market symbol ' . $symbol);
-    }
-
-    public function currency_ids($codes) {
-        return array_map(array($this, 'currency_id'), $codes);
     }
 
     public function market_ids($symbols) {
