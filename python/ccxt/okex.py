@@ -1101,6 +1101,9 @@ class okex(Exchange):
         method = 'publicGetMarket' + type
         if since is not None:
             request['before'] = since - 1
+            if limit is not None:
+                duration = self.parse_timeframe(timeframe)
+                request['after'] = self.sum(since, limit * duration * 1000)
         response = getattr(self, method)(self.extend(request, params))
         #
         #     {
