@@ -918,11 +918,11 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
           :alt: CCXT Pro
      
    * - .. image:: https://user-images.githubusercontent.com/1294454/31784029-0313c702-b509-11e7-9ccc-bc0da6a0e435.jpg
-          :target: https://gate.io/
+          :target: https://www.gate.io/ref/2436035
           :alt: gateio
      
      - gateio
-     - `Gate.io <https://gate.io/>`__
+     - `Gate.io <https://www.gate.io/ref/2436035>`__
      - .. image:: https://img.shields.io/badge/4-lightgray
           :target: https://www.gate.io/docs/apiv4/en/index.html
           :alt: API Version 4
@@ -1561,7 +1561,7 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
      - .. image:: https://img.shields.io/badge/CCXT-Pro-black
           :target: https://ccxt.pro
           :alt: CCXT Pro
-     -
+     
 
 
 Besides making basic market and limit orders, some exchanges offer margin trading (leverage), various derivatives (like futures contracts and options) and also have `dark pools <https://en.wikipedia.org/wiki/Dark_pool>`__\ , `OTC <https://en.wikipedia.org/wiki/Over-the-counter_(finance>`__\ ) (over-the-counter trading), merchant APIs and much more.
@@ -5453,6 +5453,7 @@ The type of the ledger entry is the type of the operation associated with it. If
  * ``cashback``
  * ``referral``
  * ``transfer``
+ * ``airdrop``
  * ``whatever``
  * ...
 

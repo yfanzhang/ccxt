@@ -26,6 +26,10 @@ class gateio extends Exchange {
                     'public' => 'https://api.gateio.ws/api/v4',
                     'private' => 'https://api.gateio.ws/api/v4',
                 ),
+                'referral' => array(
+                    'url' => 'https://www.gate.io/ref/2436035',
+                    'discount' => 0.2,
+                ),
             ),
             'has' => array(
                 'fetchMarkets' => true,
@@ -637,12 +641,15 @@ class gateio extends Exchange {
         );
     }
 
-    public function fetch_order_book($symbol, $params = array ()) {
+    public function fetch_order_book($symbol, $limit = null, $params = array ()) {
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
             'currency_pair' => $market['id'],
         );
+        if ($limit !== null) {
+            $request['limit'] = $limit; // default 10, max 100
+        }
         $response = $this->publicSpotGetOrderBook (array_merge($request, $params));
         $timestamp = $this->safe_integer($response, 'current');
         return $this->parse_order_book($response, $symbol, $timestamp);
@@ -796,11 +803,13 @@ class gateio extends Exchange {
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
         $this->load_markets();
-        $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
             'currency_pair' => $market['id'],
         );
+        if ($limit !== null) {
+            $request['limit'] = $limit; // default 100, max 1000
+        }
         $response = $this->privateSpotGetMyTrades (array_merge($request, $params));
         return $this->parse_trades($response, $market, $since, $limit);
     }
@@ -1035,7 +1044,9 @@ class gateio extends Exchange {
     }
 
     public function parse_order($order, $market = null) {
+        //
         // createOrder
+        //
         //     {
         //       "$id" => "62364648575",
         //       "text" => "apiv4",
@@ -1064,11 +1075,14 @@ class gateio extends Exchange {
         //       "rebated_fee_currency" => "USDT"
         //     }
         //
+        //
         $id = $this->safe_string($order, 'id');
         $marketId = $this->safe_string($order, 'currency_pair');
         $symbol = $this->safe_symbol($marketId, $market);
-        $timestamp = $this->safe_integer($order, 'create_time_ms');
-        $lastTradeTimestamp = $this->safe_integer($order, 'update_time_ms');
+        $timestamp = $this->safe_timestamp($order, 'create_time');
+        $timestamp = $this->safe_integer($order, 'create_time_ms', $timestamp);
+        $lastTradeTimestamp = $this->safe_timestamp($order, 'update_time');
+        $lastTradeTimestamp = $this->safe_integer($order, 'update_time_ms', $lastTradeTimestamp);
         $amount = $this->safe_number($order, 'amount');
         $price = $this->safe_number($order, 'price');
         $remaining = $this->safe_number($order, 'left');
@@ -1136,15 +1150,72 @@ class gateio extends Exchange {
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
-        return $this->fetch_orders_helper('open', $symbol, $since, $limit, $params);
+        $this->load_markets();
+        if ($symbol === null) {
+            $request = array(
+                // 'page' => 1,
+                // 'limit' => $limit,
+                // 'account' => '', // spot/margin (default), cross_margin
+            );
+            if ($limit !== null) {
+                $request['limit'] = $limit;
+            }
+            $response = $this->privateSpotGetOpenOrders (array_merge($request, $params));
+            //
+            //     array(
+            //         {
+            //             "currency_pair" => "ETH_BTC",
+            //             "total" => 1,
+            //             "$orders" => array(
+            //                 array(
+            //                     "id" => "12332324",
+            //                     "text" => "t-123456",
+            //                     "create_time" => "1548000000",
+            //                     "update_time" => "1548000100",
+            //                     "currency_pair" => "ETH_BTC",
+            //                     "status" => "open",
+            //                     "type" => "$limit",
+            //                     "account" => "spot",
+            //                     "side" => "buy",
+            //                     "amount" => "1",
+            //                     "price" => "5.00032",
+            //                     "time_in_force" => "gtc",
+            //                     "left" => "0.5",
+            //                     "filled_total" => "2.50016",
+            //                     "fee" => "0.005",
+            //                     "fee_currency" => "ETH",
+            //                     "point_fee" => "0",
+            //                     "gt_fee" => "0",
+            //                     "gt_discount" => false,
+            //                     "rebated_fee" => "0",
+            //                     "rebated_fee_currency" => "BTC"
+            //                 }
+            //             )
+            //         ),
+            //         ...
+            //     )
+            //
+            $allOrders = array();
+            for ($i = 0; $i < count($response); $i++) {
+                $entry = $response[$i];
+                $orders = $this->safe_value($entry, 'orders', array());
+                $parsed = $this->parse_orders($orders, null, $since, $limit);
+                $allOrders = $this->array_concat($allOrders, $parsed);
+            }
+            return $this->filter_by_since_limit($allOrders, $since, $limit);
+        }
+        return $this->fetch_orders_by_status('open', $symbol, $since, $limit, $params);
     }
 
     public function fetch_closed_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
-        return $this->fetch_orders_helper('finished', $symbol, $since, $limit, $params);
+        return $this->fetch_orders_by_status('finished', $symbol, $since, $limit, $params);
     }
 
-    public function fetch_orders_helper($status, $symbol, $since, $limit, $params = array ()) {
+    public function fetch_orders_by_status($status, $symbol = null, $since = null, $limit = null, $params = array ()) {
         $this->load_markets();
+        if ($symbol === null) {
+            throw new ArgumentsRequired($this->id . ' fetchOrdersByStatus requires a $symbol argument');
+        }
         $market = $this->market($symbol);
         $request = array(
             'currency_pair' => $market['id'],

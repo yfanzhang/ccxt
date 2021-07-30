@@ -99,8 +99,8 @@ module.exports = class bigone extends Exchange {
             },
             'fees': {
                 'trading': {
-                    'maker': 0.1 / 100,
-                    'taker': 0.1 / 100,
+                    'maker': this.parseNumber ('0.001'),
+                    'taker': this.parseNumber ('0.001'),
                 },
                 'funding': {
                     // HARDCODING IS DEPRECATED THE FEES BELOW ARE TO BE REMOVED SOON
@@ -149,6 +149,7 @@ module.exports = class bigone extends Exchange {
                 },
             },
             'commonCurrencies': {
+                'FXT': 'FXTTOKEN',
                 'MBN': 'Mobilian Coin',
                 'ONE': 'BigONE Token',
             },
