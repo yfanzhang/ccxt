@@ -9,7 +9,7 @@ The CCXT Pro stack is built upon `CCXT <https://ccxt.trade>`__ and extends the c
  * Python multiple inheritance
  * PHP Traits
 
-The CCXT Pro heavily relies on the transpiler of CCXT for `multilanguge support <https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#multilanguage-support>`__.
+The CCXT Pro heavily relies on the transpiler of CCXT for `multilanguage support <https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#multilanguage-support>`__.
 
 .. code-block::
 
@@ -28,7 +28,7 @@ The CCXT Pro heavily relies on the transpiler of CCXT for `multilanguge support 
        |       watchTickers           .       watchCancelOrder       |
        |       watchOrderBook         .             watchOrder       |
        |       watchOHLCV             .            watchOrders       |
-       |       watchStatus            .        wathgOpenOrders       |
+       |       watchStatus            .        watchOpenOrders       |
        |       watchTrades            .      watchClosedOrders       |
        |                              .          watchMyTrades       |
        |                              .           watchDeposit       |
@@ -359,6 +359,21 @@ The CCXT Pro library currently supports the following 33 cryptocurrency exchange
           :target: https://ccxt.pro
           :alt: CCXT Pro
      
+   * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
+          :target: https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223
+          :alt: huobi
+     
+     - huobi
+     - `Huobi <https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223>`__
+     - .. image:: https://img.shields.io/badge/1-lightgray
+          :target: https://huobiapi.github.io/docs/spot/v1/cn/
+          :alt: API Version 1
+     
+     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
    * - .. image:: https://user-images.githubusercontent.com/1294454/85734211-85755480-b705-11ea-8b35-0b7f1db33a2f.jpg
           :target: https://www.huobi.co.jp/register/?invite_code=znnq3
           :alt: huobijp
@@ -367,21 +382,6 @@ The CCXT Pro library currently supports the following 33 cryptocurrency exchange
      - `Huobi Japan <https://www.huobi.co.jp/register/?invite_code=znnq3>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://api-doc.huobi.co.jp
-          :alt: API Version 1
-     
-     - 
-     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
-          :target: https://ccxt.pro
-          :alt: CCXT Pro
-     
-   * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
-          :target: https://www.huobi.com/en-us/topic/invited/?invite_code=rwrd3
-          :alt: huobipro
-     
-     - huobipro
-     - `Huobi Pro <https://www.huobi.com/en-us/topic/invited/?invite_code=rwrd3>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://huobiapi.github.io/docs/spot/v1/cn/
           :alt: API Version 1
      
      - 

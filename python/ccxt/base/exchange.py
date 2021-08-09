@@ -4,7 +4,7 @@
 
 # -----------------------------------------------------------------------------
 
-__version__ = '1.54.33'
+__version__ = '1.54.61'
 
 # -----------------------------------------------------------------------------
 
@@ -134,6 +134,7 @@ class Exchange(object):
     verbose = False
     markets = None
     symbols = None
+    codes = None
     timeframes = None
     fees = {
         'trading': {
@@ -529,7 +530,7 @@ class Exchange(object):
         headers.update({'Accept-Encoding': 'gzip, deflate'})
         return self.set_headers(headers)
 
-    def print(self, *args):
+    def log(self, *args):
         print(*args)
 
     def set_headers(self, headers):
@@ -553,7 +554,7 @@ class Exchange(object):
         url = self.proxy + url
 
         if self.verbose:
-            self.print("\nRequest:", method, url, request_headers, body)
+            self.log("\nRequest:", method, url, request_headers, body)
         self.logger.debug("%s %s, Request: %s %s", method, url, request_headers, body)
 
         request_body = body
@@ -591,7 +592,7 @@ class Exchange(object):
             if self.enableLastResponseHeaders:
                 self.last_response_headers = headers
             if self.verbose:
-                self.print("\nResponse:", method, url, http_status_code, headers, http_response)
+                self.log("\nResponse:", method, url, http_status_code, headers, http_response)
             self.logger.debug("%s %s, Response: %s %s %s", method, url, http_status_code, headers, http_response)
             response.raise_for_status()
 
@@ -1351,6 +1352,7 @@ class Exchange(object):
             currencies = self.sort_by(base_currencies + quote_currencies, 'code')
             self.currencies = self.deep_extend(self.index_by(currencies, 'code'), self.currencies)
         self.currencies_by_id = self.index_by(list(self.currencies.values()), 'id')
+        self.codes = sorted(self.currencies.keys())
         return self.markets
 
     def load_markets(self, reload=False, params={}):

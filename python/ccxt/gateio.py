@@ -759,8 +759,7 @@ class gateio(Exchange):
     def fetch_tickers(self, symbols=None, params={}):
         self.load_markets()
         response = self.publicSpotGetTickers(params)
-        ticker = self.safe_value(response, 0)
-        return self.parse_tickers(ticker, symbols)
+        return self.parse_tickers(response, symbols)
 
     def fetch_balance(self, params={}):
         self.load_markets()
@@ -1312,7 +1311,8 @@ class gateio(Exchange):
             timestampString = str(timestamp)
             signaturePath = '/api/v4' + entirePath
             payloadArray = [method.upper(), signaturePath, queryString, bodySignature, timestampString]
-            payload = '\n'.join(payloadArray)
+            # eslint-disable-next-line quotes
+            payload = "\n".join(payloadArray)
             signature = self.hmac(self.encode(payload), self.encode(self.secret), hashlib.sha512)
             headers = {
                 'KEY': self.apiKey,

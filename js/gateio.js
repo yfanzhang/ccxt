@@ -763,8 +763,7 @@ module.exports = class gateio extends Exchange {
     async fetchTickers (symbols = undefined, params = {}) {
         await this.loadMarkets ();
         const response = await this.publicSpotGetTickers (params);
-        const ticker = this.safeValue (response, 0);
-        return this.parseTickers (ticker, symbols);
+        return this.parseTickers (response, symbols);
     }
 
     async fetchBalance (params = {}) {
@@ -1367,7 +1366,8 @@ module.exports = class gateio extends Exchange {
             const timestampString = timestamp.toString ();
             const signaturePath = '/api/v4' + entirePath;
             const payloadArray = [ method.toUpperCase (), signaturePath, queryString, bodySignature, timestampString ];
-            const payload = payloadArray.join ('\n');
+            // eslint-disable-next-line quotes
+            const payload = payloadArray.join ("\n");
             const signature = this.hmac (this.encode (payload), this.encode (this.secret), 'sha512');
             headers = {
                 'KEY': this.apiKey,

@@ -26,7 +26,7 @@ CCXT – CryptoCurrency eXchange Trading Library
      :target: https://discord.gg/dhzSKYU
      :alt: Discord
  
-.. image:: https://img.shields.io/badge/exchanges-113-blue.svg
+.. image:: https://img.shields.io/badge/exchanges-114-blue.svg
      :target: https://github.com/ccxt/ccxt/wiki/Exchange-Markets
      :alt: Supported Exchanges
  
@@ -335,22 +335,6 @@ Certified Cryptocurrency Exchanges
      - `Waves.Exchange <https://waves.exchange>`__
      - .. image:: https://img.shields.io/badge/*-lightgray
           :target: https://docs.waves.exchange
-          :alt: API Version *
-     
-     - .. image:: https://img.shields.io/badge/CCXT-Certified-green.svg
-          :target: https://github.com/ccxt/ccxt/wiki/Certification
-          :alt: CCXT Certified
-     
-     - 
-     - 
-   * - .. image:: https://user-images.githubusercontent.com/51840849/87489843-bb469280-c64c-11ea-91aa-69c6326506af.jpg
-          :target: https://xena.exchange
-          :alt: xena
-     
-     - xena
-     - `Xena Exchange <https://xena.exchange>`__
-     - .. image:: https://img.shields.io/badge/*-lightgray
-          :target: https://support.xena.exchange/support/solutions/44000808700
           :alt: API Version *
      
      - .. image:: https://img.shields.io/badge/CCXT-Certified-green.svg
@@ -1329,6 +1313,21 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
      
      - 
      - 
+   * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
+          :target: https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223
+          :alt: huobi
+     
+     - huobi
+     - `Huobi <https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223>`__
+     - .. image:: https://img.shields.io/badge/1-lightgray
+          :target: https://huobiapi.github.io/docs/spot/v1/cn/
+          :alt: API Version 1
+     
+     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
    * - .. image:: https://user-images.githubusercontent.com/1294454/85734211-85755480-b705-11ea-8b35-0b7f1db33a2f.jpg
           :target: https://www.huobi.co.jp/register/?invite_code=znnq3
           :alt: huobijp
@@ -1337,21 +1336,6 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
      - `Huobi Japan <https://www.huobi.co.jp/register/?invite_code=znnq3>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://api-doc.huobi.co.jp
-          :alt: API Version 1
-     
-     - 
-     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
-          :target: https://ccxt.pro
-          :alt: CCXT Pro
-     
-   * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
-          :target: https://www.huobi.com/en-us/topic/invited/?invite_code=rwrd3
-          :alt: huobipro
-     
-     - huobipro
-     - `Huobi Pro <https://www.huobi.com/en-us/topic/invited/?invite_code=rwrd3>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://huobiapi.github.io/docs/spot/v1/cn/
           :alt: API Version 1
      
      - 
@@ -1846,10 +1830,7 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
           :target: https://support.xena.exchange/support/solutions/44000808700
           :alt: API Version *
      
-     - .. image:: https://img.shields.io/badge/CCXT-Certified-green.svg
-          :target: https://github.com/ccxt/ccxt/wiki/Certification
-          :alt: CCXT Certified
-     
+     - 
      - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/27766910-cdcbfdae-5eea-11e7-9859-03fea873272d.jpg
           :target: https://www.yobit.net
@@ -1951,14 +1932,14 @@ JavaScript (for use with the ``<script>`` tag):
 All-in-one browser bundle (dependencies included), served from a CDN of your choice:
 
 
- * jsDelivr: https://cdn.jsdelivr.net/npm/ccxt@1.54.33/dist/ccxt.browser.js
- * unpkg: https://unpkg.com/ccxt@1.54.33/dist/ccxt.browser.js
+ * jsDelivr: https://cdn.jsdelivr.net/npm/ccxt@1.54.61/dist/ccxt.browser.js
+ * unpkg: https://unpkg.com/ccxt@1.54.61/dist/ccxt.browser.js
 
 CDNs are not updated in real-time and may have delays. Defaulting to the most recent version without specifying the version number is not recommended. Please, keep in mind that we are not responsible for the correct operation of those CDN servers.
 
 .. code-block:: HTML
 
-   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/ccxt@1.54.33/dist/ccxt.browser.js"></script>
+   <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/ccxt@1.54.61/dist/ccxt.browser.js"></script>
 
 Creates a global ``ccxt`` object:
 

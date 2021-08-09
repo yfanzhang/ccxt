@@ -1,7 +1,4 @@
 
-Overview
-========
-
 The ccxt library is a collection of available crypto *exchanges* or exchange classes. Each class implements the public and private API for a particular crypto exchange. All exchanges are derived from the base Exchange class and share a set of common methods. To access a particular exchange from ccxt library you need to create an instance of corresponding exchange class. Supported exchanges are updated frequently and new exchanges are added regularly.
 
 The structure of the library can be outlined as follows:
@@ -998,6 +995,21 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
      
      - 
      - 
+   * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
+          :target: https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223
+          :alt: huobi
+     
+     - huobi
+     - `Huobi <https://www.huobi.com/en-us/topic/double-reward/?invite_code=6rmm2223>`__
+     - .. image:: https://img.shields.io/badge/1-lightgray
+          :target: https://huobiapi.github.io/docs/spot/v1/cn/
+          :alt: API Version 1
+     
+     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
    * - .. image:: https://user-images.githubusercontent.com/1294454/85734211-85755480-b705-11ea-8b35-0b7f1db33a2f.jpg
           :target: https://www.huobi.co.jp/register/?invite_code=znnq3
           :alt: huobijp
@@ -1006,21 +1018,6 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
      - `Huobi Japan <https://www.huobi.co.jp/register/?invite_code=znnq3>`__
      - .. image:: https://img.shields.io/badge/1-lightgray
           :target: https://api-doc.huobi.co.jp
-          :alt: API Version 1
-     
-     - 
-     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
-          :target: https://ccxt.pro
-          :alt: CCXT Pro
-     
-   * - .. image:: https://user-images.githubusercontent.com/1294454/76137448-22748a80-604e-11ea-8069-6e389271911d.jpg
-          :target: https://www.huobi.com/en-us/topic/invited/?invite_code=rwrd3
-          :alt: huobipro
-     
-     - huobipro
-     - `Huobi Pro <https://www.huobi.com/en-us/topic/invited/?invite_code=rwrd3>`__
-     - .. image:: https://img.shields.io/badge/1-lightgray
-          :target: https://huobiapi.github.io/docs/spot/v1/cn/
           :alt: API Version 1
      
      - 
@@ -1515,10 +1512,7 @@ The CCXT library currently supports the following 113 cryptocurrency exchange ma
           :target: https://support.xena.exchange/support/solutions/44000808700
           :alt: API Version *
      
-     - .. image:: https://img.shields.io/badge/CCXT-Certified-green.svg
-          :target: https://github.com/ccxt/ccxt/wiki/Certification
-          :alt: CCXT Certified
-     
+     - 
      - 
    * - .. image:: https://user-images.githubusercontent.com/1294454/27766910-cdcbfdae-5eea-11e7-9859-03fea873272d.jpg
           :target: https://www.yobit.net
@@ -2131,7 +2125,7 @@ Market Structure
 .. code-block:: JavaScript
 
    {
-       'id':     ' btcusd',  // string literal for referencing within an exchange
+       'id':      'btcusd',  // string literal for referencing within an exchange
        'symbol':  'BTC/USD', // uppercase string literal of a pair of currencies
        'base':    'BTC',     // uppercase string, unified base currency code, 3 or more letters
        'quote':   'USD',     // uppercase string, unified quote currency code, 3 or more letters
@@ -2142,6 +2136,7 @@ Market Structure
        'maker':    0.0016,   // maker fee rate, 0.0016 = 0.16%
        'percentage': true,   // whether the taker and maker fee rate is a multiplier or a fixed flat amount
        'tierBased': false,   // whether the fee depends on your trading tier (your trading volume)
+       'feeSide': 'get'      // string literal can be 'get', 'give', 'base', 'quote', 'other'
        'precision': {        // number of decimal digits "after the dot"
            'price': 8,       // integer or float for TICK_SIZE roundingMode, might be missing if not supplied by the exchange
            'amount': 8,      // integer, might be missing if not supplied by the exchange
