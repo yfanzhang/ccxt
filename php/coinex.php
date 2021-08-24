@@ -193,6 +193,9 @@ class coinex extends Exchange {
             'options' => array(
                 'createMarketBuyOrderRequiresPrice' => true,
             ),
+            'commonCurrencies' => array(
+                'ACM' => 'Actinium',
+            ),
         ));
     }
 
@@ -980,8 +983,10 @@ class coinex extends Exchange {
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );
     }
 
-    public function request($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {
-        $response = $this->fetch2($path, $api, $method, $params, $headers, $body);
+    public function handle_errors($httpCode, $reason, $url, $method, $headers, $body, $response, $requestHeaders, $requestBody) {
+        if ($response === null) {
+            return;
+        }
         $code = $this->safe_string($response, 'code');
         $data = $this->safe_value($response, 'data');
         $message = $this->safe_string($response, 'message');
@@ -998,6 +1003,5 @@ class coinex extends Exchange {
             $ErrorClass = $this->safe_value($responseCodes, $code, '\\ccxt\\ExchangeError');
             throw new $ErrorClass($response['message']);
         }
-        return $response;
     }
 }

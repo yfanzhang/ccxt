@@ -589,8 +589,8 @@ class novadax extends Exchange {
             $currencyId = $this->safe_string($balance, 'currency');
             $code = $this->safe_currency_code($currencyId);
             $account = $this->account();
-            $account['total'] = $this->safe_string($balance, 'available');
-            $account['free'] = $this->safe_string($balance, 'balance');
+            $account['total'] = $this->safe_string($balance, 'balance');
+            $account['free'] = $this->safe_string($balance, 'available');
             $account['used'] = $this->safe_string($balance, 'hold');
             $result[$code] = $account;
         }
@@ -622,7 +622,8 @@ class novadax extends Exchange {
             } else if ($uppercaseType === 'MARKET') {
                 $uppercaseType = 'STOP_MARKET';
             }
-            $request['operator'] = ($uppercaseSide === 'BUY') ? 'LTE' : 'GTE';
+            $defaultOperator = ($uppercaseSide === 'BUY') ? 'LTE' : 'GTE';
+            $request['operator'] = $this->safe_string($params, 'operator', $defaultOperator);
             $request['stopPrice'] = $this->price_to_precision($symbol, $stopPrice);
             $params = $this->omit($params, 'stopPrice');
         }
@@ -870,7 +871,7 @@ class novadax extends Exchange {
         $id = $this->safe_string($order, 'id');
         $amount = $this->safe_number($order, 'amount');
         $price = $this->safe_number($order, 'price');
-        $cost = $this->safe_number($order, 'filledValue');
+        $cost = $this->safe_number_2($order, 'filledValue', 'value');
         $type = $this->safe_string_lower($order, 'type');
         $side = $this->safe_string_lower($order, 'side');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));

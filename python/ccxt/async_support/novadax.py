@@ -580,8 +580,8 @@ class novadax(Exchange):
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
             account = self.account()
-            account['total'] = self.safe_string(balance, 'available')
-            account['free'] = self.safe_string(balance, 'balance')
+            account['total'] = self.safe_string(balance, 'balance')
+            account['free'] = self.safe_string(balance, 'available')
             account['used'] = self.safe_string(balance, 'hold')
             result[code] = account
         return self.parse_balance(result)
@@ -609,7 +609,8 @@ class novadax(Exchange):
                 uppercaseType = 'STOP_LIMIT'
             elif uppercaseType == 'MARKET':
                 uppercaseType = 'STOP_MARKET'
-            request['operator'] = 'LTE' if (uppercaseSide == 'BUY') else 'GTE'
+            defaultOperator = 'LTE' if (uppercaseSide == 'BUY') else 'GTE'
+            request['operator'] = self.safe_string(params, 'operator', defaultOperator)
             request['stopPrice'] = self.price_to_precision(symbol, stopPrice)
             params = self.omit(params, 'stopPrice')
         if (uppercaseType == 'LIMIT') or (uppercaseType == 'STOP_LIMIT'):
@@ -839,7 +840,7 @@ class novadax(Exchange):
         id = self.safe_string(order, 'id')
         amount = self.safe_number(order, 'amount')
         price = self.safe_number(order, 'price')
-        cost = self.safe_number(order, 'filledValue')
+        cost = self.safe_number_2(order, 'filledValue', 'value')
         type = self.safe_string_lower(order, 'type')
         side = self.safe_string_lower(order, 'side')
         status = self.parse_order_status(self.safe_string(order, 'status'))

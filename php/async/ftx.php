@@ -8,6 +8,7 @@ namespace ccxt\async;
 use Exception; // a common import
 use \ccxt\ExchangeError;
 use \ccxt\ArgumentsRequired;
+use \ccxt\BadRequest;
 use \ccxt\InvalidOrder;
 use \ccxt\Precise;
 
@@ -60,6 +61,7 @@ class ftx extends Exchange {
                 'fetchTrades' => true,
                 'fetchTradingFees' => true,
                 'fetchWithdrawals' => true,
+                'setLeverage' => true,
                 'withdraw' => true,
             ),
             'timeframes' => array(
@@ -249,8 +251,8 @@ class ftx extends Exchange {
                 'trading' => array(
                     'tierBased' => true,
                     'percentage' => true,
-                    'maker' => $this->parse_number('0.02'),
-                    'taker' => $this->parse_number('0.07'),
+                    'maker' => $this->parse_number('0.0002'),
+                    'taker' => $this->parse_number('0.0007'),
                     'tiers' => array(
                         'taker' => array(
                             array( $this->parse_number('0'), $this->parse_number('0.0007') ),
@@ -1964,5 +1966,17 @@ class ftx extends Exchange {
             $this->throw_broadly_matched_exception($this->exceptions['broad'], $error, $feedback);
             throw new ExchangeError($feedback); // unknown message
         }
+    }
+
+    public function set_leverage($leverage, $symbol = null, $params = array ()) {
+        // WARNING => THIS WILL INCREASE LIQUIDATION PRICE FOR OPEN ISOLATED LONG POSITIONS
+        // AND DECREASE LIQUIDATION PRICE FOR OPEN ISOLATED SHORT POSITIONS
+        if (($leverage < 1) || ($leverage > 20)) {
+            throw new BadRequest($this->id . ' $leverage should be between 1 and 20');
+        }
+        $request = array(
+            'leverage' => $leverage,
+        );
+        return yield $this->privatePostAccountLeverage (array_merge($request, $params));
     }
 }

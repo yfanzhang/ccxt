@@ -57,6 +57,7 @@ module.exports = class ftx extends Exchange {
                 'fetchTrades': true,
                 'fetchTradingFees': true,
                 'fetchWithdrawals': true,
+                'setLeverage': true,
                 'withdraw': true,
             },
             'timeframes': {
@@ -246,8 +247,8 @@ module.exports = class ftx extends Exchange {
                 'trading': {
                     'tierBased': true,
                     'percentage': true,
-                    'maker': this.parseNumber ('0.02'),
-                    'taker': this.parseNumber ('0.07'),
+                    'maker': this.parseNumber ('0.0002'),
+                    'taker': this.parseNumber ('0.0007'),
                     'tiers': {
                         'taker': [
                             [ this.parseNumber ('0'), this.parseNumber ('0.0007') ],
@@ -1961,5 +1962,17 @@ module.exports = class ftx extends Exchange {
             this.throwBroadlyMatchedException (this.exceptions['broad'], error, feedback);
             throw new ExchangeError (feedback); // unknown message
         }
+    }
+
+    async setLeverage (leverage, symbol = undefined, params = {}) {
+        // WARNING: THIS WILL INCREASE LIQUIDATION PRICE FOR OPEN ISOLATED LONG POSITIONS
+        // AND DECREASE LIQUIDATION PRICE FOR OPEN ISOLATED SHORT POSITIONS
+        if ((leverage < 1) || (leverage > 20)) {
+            throw new BadRequest (this.id + ' leverage should be between 1 and 20');
+        }
+        const request = {
+            'leverage': leverage,
+        };
+        return await this.privatePostAccountLeverage (this.extend (request, params));
     }
 };

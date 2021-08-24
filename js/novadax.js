@@ -587,8 +587,8 @@ module.exports = class novadax extends Exchange {
             const currencyId = this.safeString (balance, 'currency');
             const code = this.safeCurrencyCode (currencyId);
             const account = this.account ();
-            account['total'] = this.safeString (balance, 'available');
-            account['free'] = this.safeString (balance, 'balance');
+            account['total'] = this.safeString (balance, 'balance');
+            account['free'] = this.safeString (balance, 'available');
             account['used'] = this.safeString (balance, 'hold');
             result[code] = account;
         }
@@ -620,7 +620,8 @@ module.exports = class novadax extends Exchange {
             } else if (uppercaseType === 'MARKET') {
                 uppercaseType = 'STOP_MARKET';
             }
-            request['operator'] = (uppercaseSide === 'BUY') ? 'LTE' : 'GTE';
+            const defaultOperator = (uppercaseSide === 'BUY') ? 'LTE' : 'GTE';
+            request['operator'] = this.safeString (params, 'operator', defaultOperator);
             request['stopPrice'] = this.priceToPrecision (symbol, stopPrice);
             params = this.omit (params, 'stopPrice');
         }
@@ -868,7 +869,7 @@ module.exports = class novadax extends Exchange {
         const id = this.safeString (order, 'id');
         const amount = this.safeNumber (order, 'amount');
         const price = this.safeNumber (order, 'price');
-        const cost = this.safeNumber (order, 'filledValue');
+        const cost = this.safeNumber2 (order, 'filledValue', 'value');
         const type = this.safeStringLower (order, 'type');
         const side = this.safeStringLower (order, 'side');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));

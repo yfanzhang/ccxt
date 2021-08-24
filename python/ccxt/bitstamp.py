@@ -180,6 +180,10 @@ class bitstamp(Exchange):
                         'matic_address/',
                         'sushi_withdrawal/',
                         'sushi_address/',
+                        'chz_withdrawal/',
+                        'chz_address/',
+                        'enj_withdrawal/',
+                        'enj_address/',
                         'transfer-to-main/',
                         'transfer-from-main/',
                         'withdrawal-requests/',
@@ -1383,6 +1387,9 @@ class bitstamp(Exchange):
             if code == 'XRP':
                 if tag is not None:
                     request['destination_tag'] = tag
+            elif code == 'XLM':
+                if tag is not None:
+                    request['memo_id'] = tag
             request['address'] = address
         else:
             method = 'privatePostWithdrawalOpen'

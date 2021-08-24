@@ -160,6 +160,10 @@ module.exports = class bitstamp extends Exchange {
                         'matic_address/',
                         'sushi_withdrawal/',
                         'sushi_address/',
+                        'chz_withdrawal/',
+                        'chz_address/',
+                        'enj_withdrawal/',
+                        'enj_address/',
                         'transfer-to-main/',
                         'transfer-from-main/',
                         'withdrawal-requests/',
@@ -1473,6 +1477,10 @@ module.exports = class bitstamp extends Exchange {
             if (code === 'XRP') {
                 if (tag !== undefined) {
                     request['destination_tag'] = tag;
+                }
+            } else if (code === 'XLM') {
+                if (tag !== undefined) {
+                    request['memo_id'] = tag;
                 }
             }
             request['address'] = address;

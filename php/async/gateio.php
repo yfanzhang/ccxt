@@ -20,6 +20,7 @@ class gateio extends Exchange {
             'rateLimit' => 1000,
             'version' => '4',
             'certified' => true,
+            'pro' => true,
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/1294454/31784029-0313c702-b509-11e7-9ccc-bc0da6a0e435.jpg',
                 'doc' => 'https://www.gate.io/docs/apiv4/en/index.html',
@@ -449,7 +450,8 @@ class gateio extends Exchange {
             $base = $this->safe_currency_code($baseId);
             $quote = $this->safe_currency_code($quoteId);
             $symbol = $base . '/' . $quote;
-            $taker = $this->safe_number($entry, 'fee');
+            // Fee is in %, so divide by 100
+            $taker = $this->safe_number($entry, 'fee') / 100;
             $maker = $taker;
             $tradeStatus = $this->safe_string($entry, 'trade_status');
             $active = $tradeStatus === 'tradable';

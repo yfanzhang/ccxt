@@ -78,6 +78,7 @@ class ftx(Exchange):
                 'fetchTrades': True,
                 'fetchTradingFees': True,
                 'fetchWithdrawals': True,
+                'setLeverage': True,
                 'withdraw': True,
             },
             'timeframes': {
@@ -267,8 +268,8 @@ class ftx(Exchange):
                 'trading': {
                     'tierBased': True,
                     'percentage': True,
-                    'maker': self.parse_number('0.02'),
-                    'taker': self.parse_number('0.07'),
+                    'maker': self.parse_number('0.0002'),
+                    'taker': self.parse_number('0.0007'),
                     'tiers': {
                         'taker': [
                             [self.parse_number('0'), self.parse_number('0.0007')],
@@ -1890,3 +1891,13 @@ class ftx(Exchange):
             self.throw_exactly_matched_exception(self.exceptions['exact'], error, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], error, feedback)
             raise ExchangeError(feedback)  # unknown message
+
+    async def set_leverage(self, leverage, symbol=None, params={}):
+        # WARNING: THIS WILL INCREASE LIQUIDATION PRICE FOR OPEN ISOLATED LONG POSITIONS
+        # AND DECREASE LIQUIDATION PRICE FOR OPEN ISOLATED SHORT POSITIONS
+        if (leverage < 1) or (leverage > 20):
+            raise BadRequest(self.id + ' leverage should be between 1 and 20')
+        request = {
+            'leverage': leverage,
+        }
+        return await self.privatePostAccountLeverage(self.extend(request, params))

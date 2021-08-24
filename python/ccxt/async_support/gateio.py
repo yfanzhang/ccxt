@@ -31,6 +31,7 @@ class gateio(Exchange):
             'rateLimit': 1000,
             'version': '4',
             'certified': True,
+            'pro': True,
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/31784029-0313c702-b509-11e7-9ccc-bc0da6a0e435.jpg',
                 'doc': 'https://www.gate.io/docs/apiv4/en/index.html',
@@ -459,7 +460,8 @@ class gateio(Exchange):
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
             symbol = base + '/' + quote
-            taker = self.safe_number(entry, 'fee')
+            # Fee is in %, so divide by 100
+            taker = self.safe_number(entry, 'fee') / 100
             maker = taker
             tradeStatus = self.safe_string(entry, 'trade_status')
             active = tradeStatus == 'tradable'
