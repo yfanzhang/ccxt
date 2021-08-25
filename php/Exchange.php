@@ -36,7 +36,7 @@ use Elliptic\EdDSA;
 use BN\BN;
 use Exception;
 
-$version = '1.55.43';
+$version = '1.55.47';
 
 // rounding mode
 const TRUNCATE = 0;
@@ -55,7 +55,7 @@ const PAD_WITH_ZERO = 1;
 
 class Exchange {
 
-    const VERSION = '1.55.43';
+    const VERSION = '1.55.47';
 
     private static $base58_alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     private static $base58_encoder = null;
@@ -1257,7 +1257,7 @@ class Exchange {
             array($paths[0]),
             array_filter(array_map('trim', array_slice($paths, 1)))
         ));
-        $camelcase = $underscore_prefix . $camelcase_method . static::capitalize($camelcase_suffix);
+        $camelcase = $camelcase_prefix . $camelcase_method . static::capitalize($camelcase_suffix);
         $underscore = $underscore_prefix . '_' . $lowercase_method . '_' . mb_strtolower($underscore_suffix);
         $api_argument = (count($paths) > 1) ? $paths : $paths[0];
         $this->defined_rest_api[$camelcase] = array($path, $api_argument, $uppercase_method, $method_name, $config);
