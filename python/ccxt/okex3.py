@@ -895,7 +895,7 @@ class okex3(Exchange):
                     'max': None,
                 },
             },
-            'contractVal': contractVal,
+            'contractSize': contractVal,
         })
 
     def fetch_markets_by_type(self, type, params={}):
