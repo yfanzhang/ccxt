@@ -77,6 +77,7 @@ class bibox extends Exchange {
                         'cquery',
                         'mdata',
                         'cdata',
+                        'orderpending',
                     ),
                 ),
                 'private' => array(
@@ -141,6 +142,7 @@ class bibox extends Exchange {
                 'MTC' => 'MTC Mesh Network', // conflict with MTC Docademic doc.com Token https://github.com/ccxt/ccxt/issues/6081 https://github.com/ccxt/ccxt/issues/3025
                 'NFT' => 'NFT Protocol',
                 'PAI' => 'PCHAIN',
+                'REVO' => 'Revo Network',
                 'TERN' => 'Ternio-ERC20',
             ),
             'options' => array(
@@ -172,6 +174,30 @@ class bibox extends Exchange {
         //     }
         //
         $markets = $this->safe_value($response, 'result');
+        $request2 = array(
+            'cmd' => 'tradeLimit',
+        );
+        $response2 = $this->publicGetOrderpending (array_merge($request2, $params));
+        //
+        //    {
+        //         $result => {
+        //             min_trade_price => array( default => '0.00000001', USDT => '0.0001', DAI => '0.0001' ),
+        //             min_trade_amount => array( default => '0.0001' ),
+        //             min_trade_money => array(
+        //                 USDT => '1',
+        //                 USDC => '1',
+        //                 DAI => '1',
+        //                 GUSD => '1',
+        //                 BIX => '3',
+        //                 BTC => '0.0002',
+        //                 ETH => '0.005'
+        //             }
+        //         ),
+        //         cmd => 'tradeLimit'
+        //     }
+        //
+        $result2 = $this->safe_value($response2, 'result', array());
+        $minCosts = $this->safe_value($result2, 'min_trade_money', array());
         $result = array();
         for ($i = 0; $i < count($markets); $i++) {
             $market = $markets[$i];
@@ -209,6 +235,10 @@ class bibox extends Exchange {
                     ),
                     'price' => array(
                         'min' => pow(10, -$precision['price']),
+                        'max' => null,
+                    ),
+                    'cost' => array(
+                        'min' => $this->safe_number($minCosts, $quoteId),
                         'max' => null,
                     ),
                 ),

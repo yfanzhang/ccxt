@@ -4,7 +4,7 @@
 
 # -----------------------------------------------------------------------------
 
-__version__ = '1.55.52'
+__version__ = '1.55.88'
 
 # -----------------------------------------------------------------------------
 
@@ -1277,6 +1277,31 @@ class Exchange(object):
     def nonce(self):
         return Exchange.seconds()
 
+    @staticmethod
+    def check_required_version(required_version, error=True):
+        result = True
+        [major1, minor1, patch1] = required_version.split('.')
+        [major2, minor2, patch2] = __version__.split('.')
+        int_major1 = int(major1)
+        int_minor1 = int(minor1)
+        int_patch1 = int(patch1)
+        int_major2 = int(major2)
+        int_minor2 = int(minor2)
+        int_patch2 = int(patch2)
+        if int_major1 > int_major2:
+            result = False
+        if int_major1 == int_major2:
+            if int_minor1 > int_minor2:
+                result = False
+            elif int_minor1 == int_minor2 and int_patch1 > int_patch2:
+                result = False
+        if not result:
+            if error:
+                raise NotSupported('Your current version of CCXT is ' + __version__ + ', a newer version ' + required_version + ' is required, please, upgrade your version of CCXT')
+            else:
+                return error
+        return result
+
     def check_required_credentials(self, error=True):
         keys = list(self.requiredCredentials.keys())
         for key in keys:
@@ -1748,22 +1773,43 @@ class Exchange(object):
     def safe_ticker(self, ticker, market=None):
         symbol = self.safe_value(ticker, 'symbol')
         if symbol is None:
-            ticker['symbol'] = self.safe_symbol(None, market)
+            symbol = self.safe_symbol(None, market)
         timestamp = self.safe_integer(ticker, 'timestamp')
-        if timestamp is not None:
-            ticker['timestamp'] = timestamp
-            ticker['datetime'] = self.iso8601(timestamp)
         baseVolume = self.safe_value(ticker, 'baseVolume')
         quoteVolume = self.safe_value(ticker, 'quoteVolume')
         vwap = self.safe_value(ticker, 'vwap')
         if vwap is None:
-            ticker['vwap'] = self.vwap(baseVolume, quoteVolume)
+            vwap = self.vwap(baseVolume, quoteVolume)
+        open = self.safe_value(ticker, 'open')
         close = self.safe_value(ticker, 'close')
         last = self.safe_value(ticker, 'last')
-        if (close is None) and (last is not None):
-            ticker['close'] = last
+        change = self.safe_value(ticker, 'change')
+        percentage = self.safe_value(ticker, 'percentage')
+        average = self.safe_value(ticker, 'average')
+        if last is not None:
+            if close is None:
+                close = last
+            if change is None:
+                if open is not None:
+                    change = last - open
         elif (last is None) and (close is not None):
-            ticker['last'] = close
+            last = close
+        if last is not None and open is not None:
+            change = last - open
+            if percentage is None:
+                if open > 0:
+                    percentage = change / open * 100
+            if average is None:
+                average = self.sum(last, open) / 2
+        ticker['symbol'] = symbol
+        ticker['timestamp'] = timestamp
+        ticker['datetime'] = self.iso8601(timestamp)
+        ticker['close'] = close
+        ticker['last'] = last
+        ticker['vwap'] = vwap
+        ticker['change'] = change
+        ticker['percentage'] = percentage
+        ticker['average'] = average
         return ticker
 
     def parse_tickers(self, tickers, symbols=None, params={}):

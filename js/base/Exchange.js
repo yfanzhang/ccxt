@@ -335,6 +335,36 @@ module.exports = class Exchange {
         return encodeURIComponent (...args)
     }
 
+    checkRequiredVersion (requiredVersion, error = true) {
+        let result = true
+        const [ major1, minor1, patch1 ] = requiredVersion.split ('.')
+            , [ major2, minor2, patch2 ] = Exchange.ccxtVersion.split ('.')
+            , intMajor1 = parseInt (major1)
+            , intMinor1 = parseInt (minor1)
+            , intPatch1 = parseInt (patch1)
+            , intMajor2 = parseInt (major2)
+            , intMinor2 = parseInt (minor2)
+            , intPatch2 = parseInt (patch2)
+        if (intMajor1 > intMajor2) {
+            result = false
+        }
+        if (intMajor1 === intMajor2) {
+            if (intMinor1 > intMinor2) {
+                result = false
+            } else if (intMinor1 === intMinor2 && intPatch1 > intPatch2) {
+                result = false
+            }
+        }
+        if (!result) {
+            if (error) {
+                throw new NotSupported ('Your current version of CCXT is ' + Exchange.ccxtVersion + ', a newer version ' + requiredVersion + ' is required, please, upgrade your version of CCXT')
+            } else {
+                return error
+            }
+        }
+        return result
+    }
+
     checkRequiredCredentials (error = true) {
         const keys = Object.keys (this.requiredCredentials)
         for (let i = 0; i < keys.length; i++) {
@@ -1143,28 +1173,55 @@ module.exports = class Exchange {
     }
 
     safeTicker (ticker, market = undefined) {
-        const symbol = this.safeValue (ticker, 'symbol');
+        let symbol = this.safeValue (ticker, 'symbol');
         if (symbol === undefined) {
-            ticker['symbol'] = this.safeSymbol (undefined, market);
+            symbol = this.safeSymbol (undefined, market);
         }
         const timestamp = this.safeInteger (ticker, 'timestamp');
-        if (timestamp !== undefined) {
-            ticker['timestamp'] = timestamp;
-            ticker['datetime'] = this.iso8601 (timestamp);
-        }
         const baseVolume = this.safeValue (ticker, 'baseVolume');
         const quoteVolume = this.safeValue (ticker, 'quoteVolume');
-        const vwap = this.safeValue (ticker, 'vwap');
+        let vwap = this.safeValue (ticker, 'vwap');
         if (vwap === undefined) {
-            ticker['vwap'] = this.vwap (baseVolume, quoteVolume);
+            vwap = this.vwap (baseVolume, quoteVolume);
         }
-        const close = this.safeValue (ticker, 'close');
-        const last = this.safeValue (ticker, 'last');
-        if ((close === undefined) && (last !== undefined)) {
-            ticker['close'] = last;
+        const open = this.safeValue (ticker, 'open');
+        let close = this.safeValue (ticker, 'close');
+        let last = this.safeValue (ticker, 'last');
+        let change = this.safeValue (ticker, 'change');
+        let percentage = this.safeValue (ticker, 'percentage');
+        let average = this.safeValue (ticker, 'average');
+        if (last !== undefined) {
+            if (close === undefined) {
+                close = last;
+            }
+            if (change === undefined) {
+                if (open !== undefined) {
+                    change = last - open;
+                }
+            }
         } else if ((last === undefined) && (close !== undefined)) {
-            ticker['last'] = close;
+            last = close;
         }
+        if (last !== undefined && open !== undefined) {
+            change = last - open;
+            if (percentage === undefined) {
+                if (open > 0) {
+                    percentage = change / open * 100;
+                }
+            }
+            if (average === undefined) {
+                average = this.sum (last, open) / 2;
+            }
+        }
+        ticker['symbol'] = symbol;
+        ticker['timestamp'] = timestamp;
+        ticker['datetime'] = this.iso8601 (timestamp);
+        ticker['close'] = close;
+        ticker['last'] = last;
+        ticker['vwap'] = vwap;
+        ticker['change'] = change;
+        ticker['percentage'] = percentage;
+        ticker['average'] = average;
         return ticker;
     }
 
