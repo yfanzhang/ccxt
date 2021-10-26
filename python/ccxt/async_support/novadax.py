@@ -32,8 +32,8 @@ class novadax(Exchange):
             'version': 'v1',
             # new metainfo interface
             'has': {
-                'CORS': False,
                 'cancelOrder': True,
+                'CORS': None,
                 'createOrder': True,
                 'fetchAccounts': True,
                 'fetchBalance': True,
@@ -44,9 +44,9 @@ class novadax(Exchange):
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
-                'fetchOrders': True,
-                'fetchOrderTrades': True,
                 'fetchOrderBook': True,
+                'fetchOrderTrades': True,
+                'fetchOrders': True,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTime': True,
@@ -230,10 +230,12 @@ class novadax(Exchange):
                 'quote': quote,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'type': 'spot',
+                'spot': True,
+                'active': active,
                 'precision': precision,
                 'limits': limits,
                 'info': market,
-                'active': active,
             })
         return result
 
@@ -259,17 +261,10 @@ class novadax(Exchange):
         symbol = self.safe_symbol(marketId, market, '_')
         open = self.safe_number(ticker, 'open24h')
         last = self.safe_number(ticker, 'lastPrice')
-        percentage = None
-        change = None
-        average = None
-        if (last is not None) and (open is not None):
-            change = last - open
-            percentage = change / open * 100
-            average = self.sum(last, open) / 2
         baseVolume = self.safe_number(ticker, 'baseVolume24h')
         quoteVolume = self.safe_number(ticker, 'quoteVolume24h')
         vwap = self.vwap(baseVolume, quoteVolume)
-        return {
+        return self.safe_ticker({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -284,13 +279,13 @@ class novadax(Exchange):
             'close': last,
             'last': last,
             'previousClose': None,
-            'change': change,
-            'percentage': percentage,
-            'average': average,
+            'change': None,
+            'percentage': None,
+            'average': None,
             'baseVolume': baseVolume,
             'quoteVolume': quoteVolume,
             'info': ticker,
-        }
+        }, market)
 
     async def fetch_ticker(self, symbol, params={}):
         await self.load_markets()
@@ -882,6 +877,7 @@ class novadax(Exchange):
         })
 
     async def withdraw(self, code, amount, address, tag=None, params={}):
+        tag, params = self.handle_withdraw_tag_and_params(tag, params)
         await self.load_markets()
         currency = self.currency(code)
         request = {

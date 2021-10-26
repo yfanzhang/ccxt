@@ -247,6 +247,8 @@ class coinex extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'type' => 'spot',
+                'spot' => true,
                 'active' => $active,
                 'taker' => $this->safe_number($market, 'taker_fee_rate'),
                 'maker' => $this->safe_number($market, 'maker_fee_rate'),
@@ -706,6 +708,7 @@ class coinex extends Exchange {
     }
 
     public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
         $this->check_address($address);
         yield $this->load_markets();
         $currency = $this->currency($code);
@@ -991,11 +994,15 @@ class coinex extends Exchange {
         $code = $this->safe_string($response, 'code');
         $data = $this->safe_value($response, 'data');
         $message = $this->safe_string($response, 'message');
-        if (($code !== '0') || ($data === null) || (($message !== 'Success') && ($message !== 'Ok') && !$data)) {
+        if (($code !== '0') || ($data === null) || (($message !== 'Success') && ($message !== 'Succeeded') && ($message !== 'Ok') && !$data)) {
             $responseCodes = array(
+                // https://github.com/coinexcom/coinex_exchange_api/wiki/013error_code
+                '23' => '\\ccxt\\PermissionDenied', // IP Prohibited
                 '24' => '\\ccxt\\AuthenticationError',
                 '25' => '\\ccxt\\AuthenticationError',
                 '34' => '\\ccxt\\AuthenticationError', // Access id is expires
+                '35' => '\\ccxt\\ExchangeNotAvailable', // Service unavailable
+                '36' => '\\ccxt\\RequestTimeout', // Service timeout
                 '107' => '\\ccxt\\InsufficientFunds',
                 '600' => '\\ccxt\\OrderNotFound',
                 '601' => '\\ccxt\\InvalidOrder',

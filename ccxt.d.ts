@@ -212,7 +212,7 @@ declare module 'ccxt' {
     export type OHLCV = [number, number, number, number, number, number];
 
     /** Request parameters */
-    type Params = Dictionary<string | number | boolean>;
+    type Params = Dictionary<string | number | boolean | string[]>;
 
     export class Exchange {
         constructor(config?: {[key in keyof Exchange]?: Exchange[key]});
@@ -454,9 +454,7 @@ declare module 'ccxt' {
     export class bitstamp1 extends Exchange {}
     export class bittrex extends Exchange {}
     export class bitvavo extends Exchange {}
-    export class bitz extends Exchange {}
     export class bl3p extends Exchange {}
-    export class braziliex extends Exchange {}
     export class btcalpha extends Exchange {}
     export class btcbox extends Exchange {}
     export class btcmarkets extends Exchange {}
@@ -465,6 +463,7 @@ declare module 'ccxt' {
     export class buda extends Exchange {}
     export class bw extends Exchange {}
     export class bybit extends Exchange {}
+    export class bytetrade extends Exchange {}
     export class cdax extends huobipro {}
     export class cex extends Exchange {}
     export class coinbase extends Exchange {}
@@ -474,7 +473,6 @@ declare module 'ccxt' {
     export class coinegg extends Exchange {}
     export class coinex extends Exchange {}
     export class coinfalcon extends Exchange {}
-    export class coinfloor extends Exchange {}
     export class coinmarketcap extends Exchange {}
     export class coinmate extends Exchange {}
     export class coinone extends Exchange {}
@@ -487,12 +485,10 @@ declare module 'ccxt' {
     export class eqonex extends Exchange {}
     export class equos extends eqonex {}
     export class exmo extends Exchange {}
-    export class exx extends Exchange {}
     export class flowbtc extends Exchange {}
     export class ftx extends Exchange {}
     export class gateio extends Exchange {}
     export class gemini extends Exchange {}
-    export class hbtc extends Exchange {}
     export class hitbtc extends Exchange {}
     export class hollaex extends Exchange {}
     export class huobi extends Exchange {}
@@ -511,7 +507,7 @@ declare module 'ccxt' {
     export class luno extends Exchange {}
     export class lykke extends Exchange {}
     export class mercado extends Exchange {}
-    export class mixcoins extends Exchange {}
+    export class mexc extends Exchange {}
     export class ndax extends Exchange {}
     export class novadax extends Exchange {}
     export class oceanex extends Exchange {}
@@ -571,9 +567,7 @@ declare module 'ccxt' {
         | 'bitstamp1'
         | 'bittrex'
         | 'bitvavo'
-        | 'bitz'
         | 'bl3p'
-        | 'braziliex'
         | 'btcalpha'
         | 'btcbox'
         | 'btcmarkets'
@@ -582,6 +576,7 @@ declare module 'ccxt' {
         | 'buda'
         | 'bw'
         | 'bybit'
+        | 'bytetrade'
         | 'cdax'
         | 'cex'
         | 'coinbase'
@@ -591,7 +586,6 @@ declare module 'ccxt' {
         | 'coinegg'
         | 'coinex'
         | 'coinfalcon'
-        | 'coinfloor'
         | 'coinmarketcap'
         | 'coinmate'
         | 'coinone'
@@ -604,12 +598,10 @@ declare module 'ccxt' {
         | 'eqonex'
         | 'equos'
         | 'exmo'
-        | 'exx'
         | 'flowbtc'
         | 'ftx'
         | 'gateio'
         | 'gemini'
-        | 'hbtc'
         | 'hitbtc'
         | 'hollaex'
         | 'huobi'
@@ -628,7 +620,7 @@ declare module 'ccxt' {
         | 'luno'
         | 'lykke'
         | 'mercado'
-        | 'mixcoins'
+        | 'mexc'
         | 'ndax'
         | 'novadax'
         | 'oceanex'
