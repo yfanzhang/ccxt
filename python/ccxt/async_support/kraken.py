@@ -30,7 +30,6 @@ from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import InvalidNonce
 from ccxt.base.decimal_to_precision import TRUNCATE
 from ccxt.base.decimal_to_precision import DECIMAL_PLACES
-from ccxt.base.precise import Precise
 
 
 class kraken(Exchange):
@@ -182,6 +181,7 @@ class kraken(Exchange):
                     },
                 },
             },
+            'handleContentTypeApplicationZip': True,
             'api': {
                 'zendesk': {
                     'get': [
@@ -334,6 +334,7 @@ class kraken(Exchange):
                     'UNI': 'UNI',
                     'USDC': 'USDC',
                     'USDT': 'Tether USD(ERC20)',
+                    'USDT-TRC20': 'Tether USD(TRC20)',
                     'WAVES': 'Waves',
                     'WBTC': 'Wrapped Bitcoin(WBTC)',
                     'XLM': 'Stellar XLM',
@@ -924,8 +925,8 @@ class kraken(Exchange):
         timestamp = None
         side = None
         type = None
-        priceString = None
-        amountString = None
+        price = None
+        amount = None
         id = None
         orderId = None
         fee = None
@@ -934,8 +935,8 @@ class kraken(Exchange):
             timestamp = self.safe_timestamp(trade, 2)
             side = 'sell' if (trade[3] == 's') else 'buy'
             type = 'limit' if (trade[4] == 'l') else 'market'
-            priceString = self.safe_string(trade, 0)
-            amountString = self.safe_string(trade, 1)
+            price = self.safe_string(trade, 0)
+            amount = self.safe_string(trade, 1)
             tradeLength = len(trade)
             if tradeLength > 6:
                 id = self.safe_string(trade, 6)  # artificially added as per  #1794
@@ -954,22 +955,20 @@ class kraken(Exchange):
             timestamp = self.safe_timestamp(trade, 'time')
             side = self.safe_string(trade, 'type')
             type = self.safe_string(trade, 'ordertype')
-            priceString = self.safe_string(trade, 'price')
-            amountString = self.safe_string(trade, 'vol')
+            price = self.safe_string(trade, 'price')
+            amount = self.safe_string(trade, 'vol')
             if 'fee' in trade:
                 currency = None
                 if market is not None:
                     currency = market['quote']
                 fee = {
-                    'cost': self.safe_number(trade, 'fee'),
+                    'cost': self.safe_string(trade, 'fee'),
                     'currency': currency,
                 }
         if market is not None:
             symbol = market['symbol']
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
-        return {
+        cost = self.safe_string(trade, 'cost')
+        return self.safe_trade({
             'id': id,
             'order': orderId,
             'info': trade,
@@ -983,7 +982,7 @@ class kraken(Exchange):
             'amount': amount,
             'cost': cost,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -1718,18 +1717,20 @@ class kraken(Exchange):
     async def fetch_deposit_address(self, code, params={}):
         await self.load_markets()
         currency = self.currency(code)
+        network = self.safe_string_upper(params, 'network')
+        networks = self.safe_value(self.options, 'networks', {})
+        network = self.safe_string(networks, network, network)  # support ETH > ERC20 aliases
+        params = self.omit(params, 'network')
+        if (code == 'USDT') and (network == 'TRC20'):
+            code = code + '-' + network
         defaultDepositMethods = self.safe_value(self.options, 'depositMethods', {})
         defaultDepositMethod = self.safe_string(defaultDepositMethods, code)
         depositMethod = self.safe_string(params, 'method', defaultDepositMethod)
-        network = self.safe_string(params, 'network')
         # if the user has specified an exchange-specific method in params
         # we pass it as is, otherwise we take the 'network' unified param
         if depositMethod is None:
             depositMethods = await self.fetch_deposit_methods(code)
             if network is not None:
-                networks = self.safe_value(self.options, 'networks', {})
-                network = self.safe_string(networks, network, network)  # support ETH > ERC20 aliases
-                params = self.omit(params, 'network')
                 # find best matching deposit method, or fallback to the first one
                 for i in range(0, len(depositMethods)):
                     entry = self.safe_string(depositMethods[i], 'method')

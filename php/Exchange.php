@@ -36,7 +36,7 @@ use Elliptic\EdDSA;
 use BN\BN;
 use Exception;
 
-$version = '1.59.16';
+$version = '1.62.38';
 
 // rounding mode
 const TRUNCATE = 0;
@@ -55,7 +55,7 @@ const PAD_WITH_ZERO = 1;
 
 class Exchange {
 
-    const VERSION = '1.59.16';
+    const VERSION = '1.62.38';
 
     private static $base58_alphabet = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
     private static $base58_encoder = null;
@@ -86,6 +86,7 @@ class Exchange {
         'bitmart',
         'bitmex',
         'bitpanda',
+        'bitrue',
         'bitso',
         'bitstamp',
         'bitstamp1',
@@ -107,7 +108,6 @@ class Exchange {
         'coinbaseprime',
         'coinbasepro',
         'coincheck',
-        'coinegg',
         'coinex',
         'coinfalcon',
         'coinmarketcap',
@@ -124,9 +124,11 @@ class Exchange {
         'exmo',
         'flowbtc',
         'ftx',
+        'ftxus',
         'gateio',
         'gemini',
         'hitbtc',
+        'hitbtc3',
         'hollaex',
         'huobi',
         'huobijp',
@@ -139,6 +141,7 @@ class Exchange {
         'kucoin',
         'kuna',
         'latoken',
+        'latoken1',
         'lbank',
         'liquid',
         'luno',
@@ -353,6 +356,7 @@ class Exchange {
         'signMessage' => 'sign_message',
         'signMessageString' => 'sign_message_string',
         'reduceFeesByCurrency' => 'reduce_fees_by_currency',
+        'safeTrade' => 'safe_trade',
         'safeOrder' => 'safe_order',
         'safeOrder2' => 'safe_order2',
         'parseNumber' => 'parse_number',
@@ -887,8 +891,17 @@ class Exchange {
         return gmdate('m' . $infix . 'd' . $infix . 'Y', (int) round($timestamp / 1000));
     }
 
-    public static function ymd($timestamp, $infix = '-') {
-        return gmdate('Y' . $infix . 'm' . $infix . 'd', (int) round($timestamp / 1000));
+    public static function ymd($timestamp, $infix = '-', $fullYear = true) {
+        $yearFormat = $fullYear ? 'Y' : 'y';
+        return gmdate($yearFormat . $infix . 'm' . $infix . 'd', (int) round($timestamp / 1000));
+    }
+
+    public static function yymmdd($timestamp, $infix = '') {
+        return static::ymd($timestamp, $infix, false);
+    }
+
+    public static function yyyymmdd($timestamp, $infix = '-') {
+        return static::ymd($timestamp, $infix, true);
     }
 
     public static function ymdhms($timestamp, $infix = ' ') {
@@ -1168,6 +1181,7 @@ class Exchange {
         $this->precisionMode = DECIMAL_PLACES;
         $this->paddingMode = NO_PADDING;
         $this->number = 'floatval';
+        $this->handleContentTypeApplicationZip = false;
 
         $this->lastRestRequestTimestamp = 0;
         $this->lastRestPollTimestamp = 0;
@@ -1707,7 +1721,7 @@ class Exchange {
         $this->ids = array_keys($this->markets_by_id);
         sort($this->ids);
         if ($currencies) {
-            $this->currencies = array_replace_recursive($currencies, $this->currencies);
+            $this->currencies = array_replace_recursive($this->currencies, $currencies);
         } else {
             $base_currencies = array_map(function ($market) {
                 return array(
@@ -1740,7 +1754,7 @@ class Exchange {
             $this->base_currencies = static::index_by($base_currencies, 'code');
             $this->quote_currencies = static::index_by($quote_currencies, 'code');
             $currencies = array_merge($this->base_currencies, $this->quote_currencies);
-            $this->currencies = array_replace_recursive($currencies, $this->currencies);
+            $this->currencies = array_replace_recursive($this->currencies, $currencies);
         }
         $this->currencies_by_id = static::index_by(array_values($this->currencies), 'id');
         $this->codes = array_keys($this->currencies);
@@ -2034,10 +2048,10 @@ class Exchange {
         return $this->filter_by_array($result, 'symbol', $symbols);
     }
 
-    public function parse_deposit_addresses($addresses, $codes = null, $indexed = true) {
+    public function parse_deposit_addresses($addresses, $codes = null, $indexed = true, $params = array()){
         $result = array();
         for ($i = 0; $i < count($addresses); $i++) {
-            $address = $this->parse_deposit_address($addresses[$i]);
+            $address = $this->extend($this->parse_deposit_address($addresses[$i]), $params);
             $result[] = $address;
         }
         if ($codes) {
@@ -3005,6 +3019,71 @@ class Exchange {
         return is_array($reduced) ? array_values($reduced) : array();
     }
 
+    public function safe_trade($trade, $market = null) {
+        $amount = $this->safe_string($trade, 'amount');
+        $price = $this->safe_string($trade, 'price');
+        $cost = $this->safe_string($trade, 'cost');
+        if ($cost === null) {
+            // contract trading
+            $contractSize = $this->safe_string($market, 'contractSize');
+            $multiplyPrice = $price;
+            if ($contractSize !== null) {
+                $inverse = $this->safe_value($market, 'inverse', false);
+                if ($inverse) {
+                    // todo => remove constants
+                    $multiplyPrice = Precise::string_div('1', $price);
+                }
+                $multiplyPrice = Precise::string_mul($multiplyPrice, $contractSize);
+            }
+            $cost = Precise::string_mul($multiplyPrice, $amount);
+        }
+        $parseFee = $this->safe_value($trade, 'fee') === null;
+        $parseFees = $this->safe_value($trade, 'fees') === null;
+        $shouldParseFees = $parseFee || $parseFees;
+        $fees = $this->safe_value($trade, 'fees', array());
+        if ($shouldParseFees) {
+            $tradeFees = $this->safe_value($trade, 'fees');
+            if ($tradeFees !== null) {
+                for ($j = 0; $j < count($tradeFees); $j++) {
+                    $tradeFee = $tradeFees[$j];
+                    $fees[] = array_merge(array(), $tradeFee);
+                }
+            } else {
+                $tradeFee = $this->safe_value($trade, 'fee');
+                if ($tradeFee !== null) {
+                    $fees[] = array_merge(array(), $tradeFee);
+                }
+            }
+        }
+        $fee = $this->safe_value($trade, 'fee');
+        if ($shouldParseFees) {
+            $reducedFees = $this->reduceFees ? $this->reduce_fees_by_currency($fees, true) : $fees;
+            $reducedLength = is_array($reducedFees) ? count($reducedFees) : 0;
+            for ($i = 0; $i < $reducedLength; $i++) {
+                $reducedFees[$i]['cost'] = $this->parse_number($reducedFees[$i]['cost']);
+            }
+            if (!$parseFee && ($reducedLength === 0)) {
+                $fee['cost'] = $this->parse_number($this->safe_string($fee, 'cost'));
+                $reducedFees[] = $fee;
+            }
+            if ($parseFees) {
+                $trade['fees'] = $reducedFees;
+            }
+            if ($parseFee && ($reducedLength === 1)) {
+                $trade['fee'] = $reducedFees[0];
+            }
+            $tradeFee = $this->safe_value($trade, 'fee');
+            if ($tradeFee !== null) {
+                $tradeFee['cost'] = $this->parse_number($this->safe_string($tradeFee, 'cost'));
+                $trade['fee'] = $tradeFee;
+            }
+        }
+        $trade['amount'] = $this->parse_number($amount);
+        $trade['price'] = $this->parse_number($price);
+        $trade['cost'] = $this->parse_number($cost);
+        return $trade;
+    }
+
     public function safe_order($order) {
         // Cost
         // Remaining
@@ -3246,11 +3325,22 @@ class Exchange {
         // also ensure the $cost field is calculated correctly
         $costPriceExists = ($average !== null) || ($price !== null);
         if ($parseCost && ($filled !== null) && $costPriceExists) {
+            $multiplyPrice = null;
             if ($average === null) {
-                $cost = Precise::string_mul($price, $filled);
+                $multiplyPrice = $price;
             } else {
-                $cost = Precise::string_mul($average, $filled);
+                $multiplyPrice = $average;
             }
+            // contract trading
+            $contractSize = $this->safe_string($market, 'contractSize');
+            if ($contractSize !== null) {
+                $inverse = $this->safe_value($market, 'inverse', false);
+                if ($inverse) {
+                    $multiplyPrice = Precise::string_div('1', $multiplyPrice);
+                }
+                $multiplyPrice = Precise::string_mul($multiplyPrice, $contractSize);
+            }
+            $cost = Precise::string_mul($multiplyPrice, $filled);
         }
         // support for $market orders
         $orderType = $this->safe_value($order, 'type');
@@ -3309,7 +3399,7 @@ class Exchange {
     }
 
     public function omit_zero($string_number) {
-        if ($string_number === null) {
+        if ($string_number === null || $string_number === '') {
             return null;
         }
         if (floatval($string_number) === 0.0) {
@@ -3336,7 +3426,7 @@ class Exchange {
         // Takes a key and a dictionary, and returns the dictionary's value for that key
         // :throws:
         //      NotSupported if the dictionary does not contain the key
-        if (in_array($key, $mapping)) {
+        if (array_key_exists($key, $mapping)) {
             return $mapping[$key];
         } else {
             throw new NotSupported ($this->id . ' ' . $key . ' does not have a value in mapping');

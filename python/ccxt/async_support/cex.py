@@ -420,12 +420,9 @@ class cex(Exchange):
         else:
             if self.options['fetchOHLCVWarning']:
                 raise ExchangeError(self.id + " fetchOHLCV warning: CEX can return historical candles for a certain date only, self might produce an empty or None reply. Set exchange.options['fetchOHLCVWarning'] = False or add({'options': {'fetchOHLCVWarning': False}}) to constructor params to suppress self warning message.")
-        ymd = self.ymd(since)
-        ymd = ymd.split('-')
-        ymd = ''.join(ymd)
         request = {
             'pair': market['id'],
-            'yyyymmdd': ymd,
+            'yyyymmdd': self.yyyymmdd(since, ''),
         }
         try:
             response = await self.publicGetOhlcvHdYyyymmddPair(self.extend(request, params))
@@ -1223,6 +1220,7 @@ class cex(Exchange):
             'currency': code,
             'address': address,
             'tag': None,
+            'network': None,
             'info': response,
         }
 

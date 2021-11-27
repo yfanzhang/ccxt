@@ -219,9 +219,13 @@ module.exports = class mexc extends Exchange {
                 },
             },
             'commonCurrencies': {
+                'BYN': 'BeyondFi',
                 'COFI': 'COFIX', // conflict with CoinFi
                 'DFT': 'dFuture',
+                'DRK': 'DRK',
                 'HERO': 'Step Hero', // conflict with Metahero
+                'MIMO': 'Mimosa',
+                'PROS': 'Pros.Finance', // conflict with Prosper
                 'SIN': 'Sin City Token',
             },
             'exceptions': {
@@ -1244,7 +1248,7 @@ module.exports = class mexc extends Exchange {
 
     async fetchDepositAddress (code, params = {}) {
         const rawNetwork = this.safeString (params, 'network');
-        params = this.omit ('network');
+        params = this.omit (params, 'network');
         const response = await this.fetchDepositAddressesByNetwork (code, params);
         const networks = this.safeValue (this.options, 'networks', {});
         const network = this.safeString (networks, rawNetwork, rawNetwork);
@@ -1741,7 +1745,7 @@ module.exports = class mexc extends Exchange {
             'fee': undefined,
             'trades': undefined,
             'info': order,
-        });
+        }, market);
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
