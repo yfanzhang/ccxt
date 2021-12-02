@@ -35,6 +35,8 @@ class kraken extends Exchange {
                 'createDepositAddress' => true,
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRates' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
@@ -467,7 +469,7 @@ class kraken extends Exchange {
                 'limits' => array(
                     'amount' => array(
                         'min' => $minAmount,
-                        'max' => pow(10, $precision['amount']),
+                        'max' => null,
                     ),
                     'price' => array(
                         'min' => pow(10, -$precision['price']),

@@ -29,6 +29,8 @@ class okex extends Exchange {
                 'CORS' => null,
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => true,
+                'fetchBorrowRates' => true,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
@@ -3082,8 +3084,8 @@ class okex extends Exchange {
         yield $this->load_markets();
         $currency = $this->currency($code);
         $accountsByType = $this->safe_value($this->options, 'accountsByType', array());
-        $fromId = $this->safe_string($accountsByType, $fromAccount, $fromAccount);
-        $toId = $this->safe_string($accountsByType, $toAccount, $toAccount);
+        $fromId = $this->safe_string($accountsByType, $fromAccount);
+        $toId = $this->safe_string($accountsByType, $toAccount);
         if ($fromId === null) {
             $keys = is_array($accountsByType) ? array_keys($accountsByType) : array();
             throw new ExchangeError($this->id . ' $fromAccount must be one of ' . implode(', ', $keys));
@@ -3546,6 +3548,68 @@ class okex extends Exchange {
             'code' => $code,
             'symbol' => $symbol,
             'status' => $status,
+        );
+    }
+
+    public function fetch_borrow_rates($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privateGetAccountInterestRate ($params);
+        // {
+        //     "code" => "0",
+        //     "data" => array(
+        //         {
+        //             "ccy":"BTC",
+        //             "interestRate":"0.00000833"
+        //         }
+        //         ...
+        //     ),
+        // }
+        $timestamp = $this->milliseconds();
+        $data = $this->safe_value($response, 'data');
+        $rates = array();
+        for ($i = 0; $i < count($data); $i++) {
+            $rate = $data[$i];
+            $code = $this->safe_currency_code($this->safe_string($rate, 'ccy'));
+            $rates[$code] = array(
+                'currency' => $code,
+                'rate' => $this->safe_number($rate, 'interestRate'),
+                'period' => 86400000,
+                'timestamp' => $timestamp,
+                'datetime' => $this->iso8601($timestamp),
+                'info' => $rate,
+            );
+        }
+        return $rates;
+    }
+
+    public function fetch_borrow_rate($code, $params = array ()) {
+        yield $this->load_markets();
+        $currency = $this->currency($code);
+        $request = array(
+            'ccy' => $currency['id'],
+        );
+        $response = yield $this->privateGetAccountInterestRate (array_merge($request, $params));
+        // {
+        //     "code" => "0",
+        //     "data":array(
+        //          {
+        //             "ccy":"USDT",
+        //             "interestRate":"0.00002065"
+        //          }
+        //          ...
+        //     ),
+        //     "msg":""
+        // }
+        $timestamp = $this->milliseconds();
+        $data = $this->safe_value($response, 'data');
+        $rate = $this->safe_value($data, 0);
+        return array(
+            'currency' => $code,
+            'rate' => $this->safe_number($rate, 'interestRate'),
+            'period' => 86400000,
+            'timestamp' => $timestamp,
+            'datetime' => $this->iso8601($timestamp),
+            'info' => $rate,
         );
     }
 

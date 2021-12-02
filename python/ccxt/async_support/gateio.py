@@ -51,6 +51,8 @@ class gateio(Exchange):
                 'createMarketOrder': False,
                 'createOrder': True,
                 'fetchBalance': True,
+                'fetchBorrowRate': False,
+                'fetchBorrowRates': False,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
@@ -94,6 +96,7 @@ class gateio(Exchange):
                             'currency_pairs/{currency_pair}': 1,
                             'cross/currencies': 1,
                             'cross/currencies/{currency}': 1,
+                            'funding_book': 1,
                         },
                     },
                     'futures': {
@@ -1410,7 +1413,8 @@ class gateio(Exchange):
         request = {}
         futures = type == 'futures'
         swap = type == 'swap'
-        if (swap or futures) and not params['settle']:
+        settle = self.safe_string(params, 'settle')
+        if (swap or futures) and (settle is None):
             request['settle'] = 'usdt' if swap else 'btc'
         response = await getattr(self, method)(self.extend(request, params))
         return self.parse_tickers(response, symbols)
@@ -2035,7 +2039,8 @@ class gateio(Exchange):
             # Gateio doesn't have market orders for spot
             raise InvalidOrder(self.id + ' createOrder() does not support ' + type + ' orders for ' + market['type'] + ' markets')
         request = None
-        if stopPrice is None:
+        trigger = self.safe_value(params, 'trigger')
+        if stopPrice is None and trigger is None:
             if contract:
                 # contract order
                 request = {
@@ -2127,9 +2132,10 @@ class gateio(Exchange):
                 defaultExpiration = self.safe_integer(options, 'expiration')
                 expiration = self.safe_integer(params, 'expiration', defaultExpiration)
                 rule = '>=' if (side == 'sell') else '<='
+                triggerPrice = self.safe_value(trigger, 'price', stopPrice)
                 request = {
                     'trigger': {
-                        'price': self.price_to_precision(symbol, stopPrice),
+                        'price': self.price_to_precision(symbol, triggerPrice),
                         'rule': rule,  # >= triggered when market price larger than or equal to price field, <= triggered when market price less than or equal to price field
                         'expiration': expiration,  # required, how long(in seconds) to wait for the condition to be triggered before cancelling the order
                     },

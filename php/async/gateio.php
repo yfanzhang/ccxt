@@ -42,6 +42,8 @@ class gateio extends Exchange {
                 'createMarketOrder' => false,
                 'createOrder' => true,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRates' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
@@ -85,6 +87,7 @@ class gateio extends Exchange {
                             'currency_pairs/{currency_pair}' => 1,
                             'cross/currencies' => 1,
                             'cross/currencies/{currency}' => 1,
+                            'funding_book' => 1,
                         ),
                     ),
                     'futures' => array(
@@ -1438,7 +1441,8 @@ class gateio extends Exchange {
         $request = array();
         $futures = $type === 'futures';
         $swap = $type === 'swap';
-        if (($swap || $futures) && !$params['settle']) {
+        $settle = $this->safe_string($params, 'settle');
+        if (($swap || $futures) && ($settle === null)) {
             $request['settle'] = $swap ? 'usdt' : 'btc';
         }
         $response = yield $this->$method (array_merge($request, $params));
@@ -2114,7 +2118,8 @@ class gateio extends Exchange {
             throw new InvalidOrder($this->id . ' createOrder() does not support ' . $type . ' orders for ' . $market['type'] . ' markets');
         }
         $request = null;
-        if ($stopPrice === null) {
+        $trigger = $this->safe_value($params, 'trigger');
+        if ($stopPrice === null && $trigger === null) {
             if ($contract) {
                 // $contract order
                 $request = array(
@@ -2216,9 +2221,10 @@ class gateio extends Exchange {
                 $defaultExpiration = $this->safe_integer($options, 'expiration');
                 $expiration = $this->safe_integer($params, 'expiration', $defaultExpiration);
                 $rule = ($side === 'sell') ? '>=' : '<=';
+                $triggerPrice = $this->safe_value($trigger, 'price', $stopPrice);
                 $request = array(
                     'trigger' => array(
-                        'price' => $this->price_to_precision($symbol, $stopPrice),
+                        'price' => $this->price_to_precision($symbol, $triggerPrice),
                         'rule' => $rule, // >= triggered when $market $price larger than or equal to $price field, <= triggered when $market $price less than or equal to $price field
                         'expiration' => $expiration, // required, how long (in seconds) to wait for the condition to be triggered before cancelling the order
                     ),

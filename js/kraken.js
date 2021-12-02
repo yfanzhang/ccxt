@@ -25,6 +25,8 @@ module.exports = class kraken extends Exchange {
                 'createDepositAddress': true,
                 'createOrder': true,
                 'fetchBalance': true,
+                'fetchBorrowRate': false,
+                'fetchBorrowRates': false,
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
                 'fetchDepositAddress': true,
@@ -457,7 +459,7 @@ module.exports = class kraken extends Exchange {
                 'limits': {
                     'amount': {
                         'min': minAmount,
-                        'max': Math.pow (10, precision['amount']),
+                        'max': undefined,
                     },
                     'price': {
                         'min': Math.pow (10, -precision['price']),
