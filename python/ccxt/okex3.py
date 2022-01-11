@@ -52,7 +52,7 @@ class okex3(Exchange):
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchClosedOrders': True,
-                'fetchCurrencies': None,  # see below
+                'fetchCurrencies': True,  # see below
                 'fetchDepositAddress': True,
                 'fetchDeposits': True,
                 'fetchLedger': True,
@@ -70,7 +70,7 @@ class okex3(Exchange):
                 'fetchTrades': True,
                 'fetchTransactions': None,
                 'fetchWithdrawals': True,
-                'futures': True,
+                'future': True,
                 'withdraw': True,
             },
             'timeframes': {
@@ -715,6 +715,7 @@ class okex3(Exchange):
                     'rate': 'public',
                     '{instrument_id}/constituents': 'public',
                 },
+                'warnOnFetchCurrenciesWithoutAuthorization': False,
             },
             'commonCurrencies': {
                 # OKEX refers to ERC20 version of Aeternity(AEToken)
@@ -896,7 +897,6 @@ class okex3(Exchange):
                     'max': None,
                 },
             },
-            'contractSize': contractVal,
         })
 
     def fetch_markets_by_type(self, type, params={}):
@@ -994,52 +994,56 @@ class okex3(Exchange):
             raise NotSupported(self.id + ' fetchMarketsByType does not support market type ' + type)
 
     def fetch_currencies(self, params={}):
-        # has['fetchCurrencies'] is currently set to False
         # despite that their docs say these endpoints are public:
         #     https://www.okex.com/api/account/v3/withdrawal/fee
         #     https://www.okex.com/api/account/v3/currencies
         # it will still reply with {"code":30001, "message": "OK-ACCESS-KEY header is required"}
         # if you attempt to access it without authentication
-        response = self.accountGetCurrencies(params)
-        #
-        #     [
-        #         {
-        #             name: '',
-        #             currency: 'BTC',
-        #             can_withdraw: '1',
-        #             can_deposit: '1',
-        #             min_withdrawal: '0.0100000000000000'
-        #         },
-        #     ]
-        #
-        result = {}
-        for i in range(0, len(response)):
-            currency = response[i]
-            id = self.safe_string(currency, 'currency')
-            code = self.safe_currency_code(id)
-            precision = 0.00000001  # default precision, todo: fix "magic constants"
-            name = self.safe_string(currency, 'name')
-            canDeposit = self.safe_integer(currency, 'can_deposit')
-            canWithdraw = self.safe_integer(currency, 'can_withdraw')
-            active = True if (canDeposit and canWithdraw) else False
-            result[code] = {
-                'id': id,
-                'code': code,
-                'info': currency,
-                'type': None,
-                'name': name,
-                'active': active,
-                'fee': None,  # todo: redesign
-                'precision': precision,
-                'limits': {
-                    'amount': {'min': None, 'max': None},
-                    'withdraw': {
-                        'min': self.safe_number(currency, 'min_withdrawal'),
-                        'max': None,
+        if not self.check_required_credentials(False):
+            if self.options['warnOnFetchCurrenciesWithoutAuthorization']:
+                raise ExchangeError(self.id + ' fetchCurrencies() is a private API endpoint that requires authentication with API keys. Set the API keys on the exchange instance or exchange.options["warnOnFetchCurrenciesWithoutAuthorization"] = False to suppress self warning message.')
+            return None
+        else:
+            response = self.accountGetCurrencies(params)
+            #
+            #     [
+            #         {
+            #             name: '',
+            #             currency: 'BTC',
+            #             can_withdraw: '1',
+            #             can_deposit: '1',
+            #             min_withdrawal: '0.0100000000000000'
+            #         },
+            #     ]
+            #
+            result = {}
+            for i in range(0, len(response)):
+                currency = response[i]
+                id = self.safe_string(currency, 'currency')
+                code = self.safe_currency_code(id)
+                precision = 0.00000001  # default precision, todo: fix "magic constants"
+                name = self.safe_string(currency, 'name')
+                canDeposit = self.safe_integer(currency, 'can_deposit')
+                canWithdraw = self.safe_integer(currency, 'can_withdraw')
+                active = True if (canDeposit and canWithdraw) else False
+                result[code] = {
+                    'id': id,
+                    'code': code,
+                    'info': currency,
+                    'type': None,
+                    'name': name,
+                    'active': active,
+                    'fee': None,  # todo: redesign
+                    'precision': precision,
+                    'limits': {
+                        'amount': {'min': None, 'max': None},
+                        'withdraw': {
+                            'min': self.safe_number(currency, 'min_withdrawal'),
+                            'max': None,
+                        },
                     },
-                },
-            }
-        return result
+                }
+            return result
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -1531,16 +1535,16 @@ class okex3(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        items = response if isinstance(response, list) else [response]
-        for i in range(0, len(items)):
-            balance = items[i].copy()
+        for i in range(0, len(response)):
+            balance = response[i]
             currencyId = self.safe_string(balance, 'currency')
             code = self.safe_currency_code(currencyId)
-            balance['total'] = self.parse_number(balance['balance'])
-            balance['used'] = self.parse_number(balance['hold'])
-            balance['free'] = self.parse_number(balance['available'])
-            result[code] = balance
-        return result
+            account = self.account()
+            account['total'] = self.safe_string(balance, 'balance')
+            account['used'] = self.safe_string(balance, 'hold')
+            account['free'] = self.safe_string(balance, 'available')
+            result[code] = account
+        return self.safe_balance(result)
 
     def parse_margin_balance(self, response):
         #
@@ -1578,9 +1582,8 @@ class okex3(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        items = response if isinstance(response, list) else [response]
-        for i in range(0, len(items)):
-            balance = items[i].copy()
+        for i in range(0, len(response)):
+            balance = response[i]
             marketId = self.safe_string(balance, 'instrument_id')
             market = self.safe_value(self.markets_by_id, marketId)
             symbol = None
@@ -1591,14 +1594,32 @@ class okex3(Exchange):
                 symbol = base + '/' + quote
             else:
                 symbol = market['symbol']
-            parts = symbol.split('/')
-            for currency in parts:
-                balance[currency]=balance['currency:{}'.format(currency)]
-                balance[currency]['total'] = self.parse_number(balance[currency]['balance'])
-                balance[currency]['used'] = self.parse_number(balance[currency]['hold'])
-                balance[currency]['free'] = self.parse_number(balance[currency]['available'])
-                del balance['currency:{}'.format(currency)]
-            result[symbol] = balance
+            omittedBalance = self.omit(balance, [
+                'instrument_id',
+                'liquidation_price',
+                'product_id',
+                'risk_rate',
+                'margin_ratio',
+                'maint_margin_ratio',
+                'tiers',
+            ])
+            keys = list(omittedBalance.keys())
+            accounts = {}
+            for k in range(0, len(keys)):
+                key = keys[k]
+                marketBalance = balance[key]
+                if key.find(':') >= 0:
+                    parts = key.split(':')
+                    currencyId = parts[1]
+                    code = self.safe_currency_code(currencyId)
+                    account = self.account()
+                    account['total'] = self.safe_string(marketBalance, 'balance')
+                    account['used'] = self.safe_string(marketBalance, 'hold')
+                    account['free'] = self.safe_string(marketBalance, 'available')
+                    accounts[code] = account
+                else:
+                    raise NotSupported(self.id + ' margin balance response format has changed!')
+            result[symbol] = self.safe_balance(accounts)
         return result
 
     def parse_futures_balance(self, response):
@@ -1640,15 +1661,13 @@ class okex3(Exchange):
             'timestamp': None,
             'datetime': None,
         }
-        if 'info' in response:
-            info = self.safe_value(response, 'info', {})
-            items = info.values()
-        else:
-            items = [response]
-            
-        for item in items:
-            balance = item.copy()
-            code = self.safe_string(balance, 'underlying')
+        info = self.safe_value(response, 'info', {})
+        ids = list(info.keys())
+        for i in range(0, len(ids)):
+            id = ids[i]
+            code = self.safe_currency_code(id)
+            balance = self.safe_value(info, id, {})
+            account = self.account()
             totalAvailBalance = self.safe_string(balance, 'total_avail_balance')
             if self.safe_string(balance, 'margin_mode') == 'fixed':
                 contracts = self.safe_value(balance, 'contracts', [])
@@ -1661,18 +1680,18 @@ class okex3(Exchange):
                     marginForUnfilled = self.safe_string(contract, 'margin_for_unfilled')
                     margin = Precise.string_sub(Precise.string_sub(Precise.string_add(fixedBalance, realizedPnl), marginFrozen), marginForUnfilled)
                     free = Precise.string_add(free, margin)
-                balance['free'] = free
+                account['free'] = free
             else:
                 realizedPnl = self.safe_string(balance, 'realized_pnl')
                 unrealizedPnl = self.safe_string(balance, 'unrealized_pnl')
                 marginFrozen = self.safe_string(balance, 'margin_frozen')
                 marginForUnfilled = self.safe_string(balance, 'margin_for_unfilled')
                 positive = Precise.string_add(Precise.string_add(totalAvailBalance, realizedPnl), unrealizedPnl)
-                balance['free'] = Precise.string_sub(Precise.string_sub(positive, marginFrozen), marginForUnfilled)
-            balance['free'] = self.parse_number(balance['free'])
-            balance['total'] = self.parse_number(balance['equity'])
-            result[code] = balance
-        return result
+                account['free'] = Precise.string_sub(Precise.string_sub(positive, marginFrozen), marginForUnfilled)
+            # it may be incorrect to use total, free and used for swap accounts
+            account['total'] = self.safe_string(balance, 'equity')
+            result[code] = account
+        return self.safe_balance(result)
 
     def parse_swap_balance(self, response):
         #
@@ -1698,21 +1717,22 @@ class okex3(Exchange):
         result = {'info': response}
         timestamp = None
         info = self.safe_value(response, 'info', [])
-        info = info if isinstance(info, list) else [info]
         for i in range(0, len(info)):
-            balance = info[i].copy()
+            balance = info[i]
             marketId = self.safe_string(balance, 'instrument_id')
             symbol = marketId
             if marketId in self.markets_by_id:
                 symbol = self.markets_by_id[marketId]['symbol']
             balanceTimestamp = self.parse8601(self.safe_string(balance, 'timestamp'))
             timestamp = balanceTimestamp if (timestamp is None) else max(timestamp, balanceTimestamp)
-            balance['total'] = self.parse_number(balance['equity'])
-            balance['free'] = self.parse_number(balance['total_avail_balance'])
-            result[symbol] = balance
+            account = self.account()
+            # it may be incorrect to use total, free and used for swap accounts
+            account['total'] = self.safe_string(balance, 'equity')
+            account['free'] = self.safe_string(balance, 'total_avail_balance')
+            result[symbol] = account
         result['timestamp'] = timestamp
         result['datetime'] = self.iso8601(timestamp)
-        return result
+        return self.safe_balance(result)
 
     def fetch_balance(self, params={}):
         defaultType = self.safe_string_2(self.options, 'fetchBalance', 'defaultType')
@@ -1720,23 +1740,10 @@ class okex3(Exchange):
         if type is None:
             raise ArgumentsRequired(self.id + " fetchBalance() requires a type parameter(one of 'account', 'spot', 'margin', 'futures', 'swap')")
         self.load_markets()
-        if type == 'spot' and 'currency' in params:
-            method = 'spotGetAccountsCurrency'
-        elif type == 'margin' and 'instrument_id' in params:
-            market = self.market(params['instrument_id'])
-            params['instrument_id'] = market['id']
-            method = 'marginGetAccountsInstrumentId'
-        elif type == 'swap' and 'instrument_id' in params:
-            method = 'swapGetInstrumentIdAccounts'
-        elif type == 'futures' and 'underlying' in params:
-            method = 'futuresGetAccountsUnderlying'
-        else:
-            suffix = 'Wallet' if (type == 'account') else 'Accounts'
-            method = type + 'Get' + suffix
+        suffix = 'Wallet' if (type == 'account') else 'Accounts'
+        method = type + 'Get' + suffix
         query = self.omit(params, 'type')
         response = getattr(self, method)(query)
-        if type == 'margin' and 'instrument_id' in params:
-            response['instrument_id'] = params['instrument_id']
         #
         # account
         #
@@ -2140,7 +2147,7 @@ class okex3(Exchange):
         if (clientOrderId is not None) and (len(clientOrderId) < 1):
             clientOrderId = None  # fix empty clientOrderId string
         stopPrice = self.safe_number(order, 'trigger_price')
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -2592,6 +2599,7 @@ class okex3(Exchange):
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': None,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': address,
