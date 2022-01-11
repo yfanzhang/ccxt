@@ -4,7 +4,6 @@
 
 const Exchange = require ('./base/Exchange');
 const { BadSymbol, ExchangeError, AuthenticationError } = require ('./base/errors');
-const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -124,24 +123,28 @@ module.exports = class coincheck extends Exchange {
         });
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const balances = await this.privateGetAccountsBalance (params);
-        const result = { 'info': balances };
+    parseBalance (response) {
+        const result = { 'info': response };
         const codes = Object.keys (this.currencies);
         for (let i = 0; i < codes.length; i++) {
             const code = codes[i];
             const currency = this.currency (code);
             const currencyId = currency['id'];
-            if (currencyId in balances) {
+            if (currencyId in response) {
                 const account = this.account ();
                 const reserved = currencyId + '_reserved';
-                account['free'] = this.safeString (balances, currencyId);
-                account['used'] = this.safeString (balances, reserved);
+                account['free'] = this.safeString (response, currencyId);
+                account['used'] = this.safeString (response, reserved);
                 result[code] = account;
             }
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetAccountsBalance (params);
+        return this.parseBalance (response);
     }
 
     async fetchOpenOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -185,7 +188,7 @@ module.exports = class coincheck extends Exchange {
         const status = undefined;
         const marketId = this.safeString (order, 'pair');
         const symbol = this.safeSymbol (marketId, market, '_');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'timestamp': timestamp,
@@ -257,6 +260,36 @@ module.exports = class coincheck extends Exchange {
     }
 
     parseTrade (trade, market = undefined) {
+        //
+        // fetchTrades (public)
+        //
+        //      {
+        //          "id": "206849494",
+        //          "amount": "0.01",
+        //          "rate": "5598346.0",
+        //          "pair": "btc_jpy",
+        //          "order_type": "sell",
+        //          "created_at": "2021-12-08T14:10:33.000Z"
+        //      }
+        //
+        // fetchMyTrades (private) - example from docs
+        //
+        //      {
+        //          "id": 38,
+        //          "order_id": 49,
+        //          "created_at": "2015-11-18T07:02:21.000Z",
+        //          "funds": {
+        //              "btc": "0.1",
+        //              "jpy": "-4096.135"
+        //                  },
+        //           "pair": "btc_jpy",
+        //           "rate": "40900.0",
+        //           "fee_currency": "JPY",
+        //           "fee": "6.135",
+        //           "liquidity": "T",
+        //           "side": "buy"
+        //      }
+        //
         const timestamp = this.parse8601 (this.safeString (trade, 'created_at'));
         const id = this.safeString (trade, 'id');
         const priceString = this.safeString (trade, 'rate');
@@ -287,7 +320,7 @@ module.exports = class coincheck extends Exchange {
         }
         let takerOrMaker = undefined;
         let amountString = undefined;
-        let cost = undefined;
+        let costString = undefined;
         let side = undefined;
         let fee = undefined;
         let orderId = undefined;
@@ -299,10 +332,10 @@ module.exports = class coincheck extends Exchange {
             }
             const funds = this.safeValue (trade, 'funds', {});
             amountString = this.safeString (funds, baseId);
-            cost = this.safeNumber (funds, quoteId);
+            costString = this.safeString (funds, quoteId);
             fee = {
                 'currency': this.safeString (trade, 'fee_currency'),
-                'cost': this.safeNumber (trade, 'fee'),
+                'cost': this.safeString (trade, 'fee'),
             };
             side = this.safeString (trade, 'side');
             orderId = this.safeString (trade, 'order_id');
@@ -310,12 +343,7 @@ module.exports = class coincheck extends Exchange {
             amountString = this.safeString (trade, 'amount');
             side = this.safeString (trade, 'order_type');
         }
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        if (cost === undefined) {
-            cost = this.parseNumber (Precise.stringMul (priceString, amountString));
-        }
-        return {
+        return this.safeTrade ({
             'id': id,
             'info': trade,
             'datetime': this.iso8601 (timestamp),
@@ -325,17 +353,39 @@ module.exports = class coincheck extends Exchange {
             'side': side,
             'order': orderId,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': costString,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
         await this.loadMarkets ();
         const market = this.market (symbol);
         const response = await this.privateGetExchangeOrdersTransactions (this.extend ({}, params));
+        //
+        //      {
+        //          "success": true,
+        //          "transactions": [
+        //                              {
+        //                                  "id": 38,
+        //                                  "order_id": 49,
+        //                                  "created_at": "2015-11-18T07:02:21.000Z",
+        //                                  "funds": {
+        //                                      "btc": "0.1",
+        //                                      "jpy": "-4096.135"
+        //                                          },
+        //                                  "pair": "btc_jpy",
+        //                                  "rate": "40900.0",
+        //                                  "fee_currency": "JPY",
+        //                                  "fee": "6.135",
+        //                                  "liquidity": "T",
+        //                                  "side": "buy"
+        //                               },
+        //                          ]
+        //      }
+        //
         const transactions = this.safeValue (response, 'transactions', []);
         return this.parseTrades (transactions, market, since, limit);
     }
@@ -350,6 +400,16 @@ module.exports = class coincheck extends Exchange {
             request['limit'] = limit;
         }
         const response = await this.publicGetTrades (this.extend (request, params));
+        //
+        //      {
+        //          "id": "206849494",
+        //          "amount": "0.01",
+        //          "rate": "5598346.0",
+        //          "pair": "btc_jpy",
+        //          "order_type": "sell",
+        //          "created_at": "2021-12-08T14:10:33.000Z"
+        //      }
+        //
         const data = this.safeValue (response, 'data', []);
         return this.parseTrades (data, market, since, limit);
     }

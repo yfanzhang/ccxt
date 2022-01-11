@@ -97,9 +97,7 @@ class btctradeua(Exchange):
     def sign_in(self, params={}):
         return self.privatePostAuth(params)
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.privatePostBalance(params)
+    def parse_balance(self, response):
         result = {'info': response}
         balances = self.safe_value(response, 'accounts')
         for i in range(0, len(balances)):
@@ -109,7 +107,12 @@ class btctradeua(Exchange):
             account = self.account()
             account['total'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privatePostBalance(params)
+        return self.parse_balance(response)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -316,7 +319,7 @@ class btctradeua(Exchange):
         price = self.safe_string(order, 'price')
         amount = self.safe_string(order, 'amnt_trade')
         remaining = self.safe_string(order, 'amnt_trade')
-        return self.safe_order2({
+        return self.safe_order({
             'id': self.safe_string(order, 'id'),
             'clientOrderId': None,
             'timestamp': timestamp,  # until they fix their timestamp

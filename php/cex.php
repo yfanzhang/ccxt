@@ -41,6 +41,8 @@ class cex extends Exchange {
             ),
             'timeframes' => array(
                 '1m' => '1m',
+                '1h' => '1h',
+                '1d' => '1d',
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/1294454/27766442-8ddc33b0-5ed8-11e7-8b98-f786aef0f3c9.jpg',
@@ -247,6 +249,8 @@ class cex extends Exchange {
                 'code' => $code,
                 'name' => $id,
                 'active' => $active,
+                'deposit' => null,
+                'withdraw' => null,
                 'precision' => $precision,
                 'fee' => null,
                 'limits' => array(
@@ -358,9 +362,7 @@ class cex extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privatePostBalance ($params);
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         $ommited = array( 'username', 'timestamp' );
         $balances = $this->omit($response, $ommited);
@@ -375,7 +377,13 @@ class cex extends Exchange {
             $code = $this->safe_currency_code($currencyId);
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privatePostBalance ($params);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -510,20 +518,28 @@ class cex extends Exchange {
     }
 
     public function parse_trade($trade, $market = null) {
+        //
+        // fetchTrades (public)
+        //
+        //      {
+        //          "type" => "sell",
+        //          "date" => "1638401878",
+        //          "amount" => "0.401000",
+        //          "price" => "249",
+        //          "tid" => "11922"
+        //      }
+        //
         $timestamp = $this->safe_timestamp($trade, 'date');
         $id = $this->safe_string($trade, 'tid');
         $type = null;
         $side = $this->safe_string($trade, 'type');
         $priceString = $this->safe_string($trade, 'price');
         $amountString = $this->safe_string($trade, 'amount');
-        $price = $this->parse_number($priceString);
-        $amount = $this->parse_number($amountString);
-        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $symbol = null;
         if ($market !== null) {
             $symbol = $market['symbol'];
         }
-        return array(
+        return $this->safe_trade(array(
             'info' => $trade,
             'id' => $id,
             'timestamp' => $timestamp,
@@ -533,11 +549,11 @@ class cex extends Exchange {
             'side' => $side,
             'order' => null,
             'takerOrMaker' => null,
-            'price' => $price,
-            'amount' => $amount,
-            'cost' => $cost,
+            'price' => $priceString,
+            'amount' => $amountString,
+            'cost' => null,
             'fee' => null,
-        );
+        ), $market);
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {

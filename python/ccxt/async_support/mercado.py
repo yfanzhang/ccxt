@@ -276,9 +276,7 @@ class mercado(Exchange):
         response = await getattr(self, method)(self.extend(request, params))
         return self.parse_trades(response, market, since, limit)
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privatePostGetAccountInfo(params)
+    def parse_balance(self, response):
         data = self.safe_value(response, 'response_data', {})
         balances = self.safe_value(data, 'balance', {})
         result = {'info': response}
@@ -292,7 +290,12 @@ class mercado(Exchange):
                 account['free'] = self.safe_string(balance, 'available')
                 account['total'] = self.safe_string(balance, 'total')
                 result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privatePostGetAccountInfo(params)
+        return self.parse_balance(response)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -400,20 +403,16 @@ class mercado(Exchange):
         market = self.safe_market(marketId, market)
         timestamp = self.safe_timestamp(order, 'created_timestamp')
         fee = {
-            'cost': self.safe_number(order, 'fee'),
+            'cost': self.safe_string(order, 'fee'),
             'currency': market['quote'],
         }
-        price = self.safe_number(order, 'limit_price')
+        price = self.safe_string(order, 'limit_price')
         # price = self.safe_number(order, 'executed_price_avg', price)
-        average = self.safe_number(order, 'executed_price_avg')
-        amount = self.safe_number(order, 'quantity')
-        filled = self.safe_number(order, 'executed_quantity')
+        average = self.safe_string(order, 'executed_price_avg')
+        amount = self.safe_string(order, 'quantity')
+        filled = self.safe_string(order, 'executed_quantity')
         lastTradeTimestamp = self.safe_timestamp(order, 'updated_timestamp')
         rawTrades = self.safe_value(order, 'operations', [])
-        trades = self.parse_trades(rawTrades, market, None, None, {
-            'side': side,
-            'order': id,
-        })
         return self.safe_order({
             'info': order,
             'id': id,
@@ -435,8 +434,8 @@ class mercado(Exchange):
             'remaining': None,
             'status': status,
             'fee': fee,
-            'trades': trades,
-        })
+            'trades': rawTrades,
+        }, market)
 
     async def fetch_order(self, id, symbol=None, params={}):
         if symbol is None:

@@ -405,9 +405,7 @@ module.exports = class itbit extends Exchange {
         return this.parseTrades (trades, market, since, limit);
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.fetchWallets (params);
+    parseBalance (response) {
         const balances = response[0]['balances'];
         const result = { 'info': response };
         for (let i = 0; i < balances.length; i++) {
@@ -419,7 +417,13 @@ module.exports = class itbit extends Exchange {
             account['total'] = this.safeString (balance, 'totalBalance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.fetchWallets (params);
+        return this.parseBalance (response);
     }
 
     async fetchWallets (params = {}) {
@@ -519,7 +523,7 @@ module.exports = class itbit extends Exchange {
         const id = this.safeString (order, 'id');
         const postOnlyString = this.safeString (order, 'postOnly');
         const postOnly = (postOnlyString === 'True');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,

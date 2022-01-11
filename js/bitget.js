@@ -933,6 +933,8 @@ module.exports = class bitget extends Exchange {
                 'type': undefined,
                 'name': undefined,
                 'active': undefined,
+                'deposit': undefined,
+                'withdraw': undefined,
                 'fee': undefined,
                 'precision': undefined,
                 'limits': {
@@ -1606,7 +1608,7 @@ module.exports = class bitget extends Exchange {
                 result[code]['used'] = Precise.stringAdd (used, this.safeString (balance, 'balance'));
             }
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     parseSwapBalance (response) {
@@ -1634,7 +1636,7 @@ module.exports = class bitget extends Exchange {
             account['free'] = this.safeString (balance, 'total_avail_balance');
             result[symbol] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async fetchAccounts (params = {}) {
@@ -1754,7 +1756,7 @@ module.exports = class bitget extends Exchange {
         } else if (type === 'swap') {
             return this.parseSwapBalance (response);
         }
-        throw new NotSupported (this.id + " fetchBalance does not support the '" + type + "' type (the type must be one of 'account', 'spot', 'margin', 'futures', 'swap')");
+        throw new NotSupported (this.id + " fetchBalance does not support the '" + type + "' type (the type must be one of 'account', 'spot', or 'swap')");
     }
 
     parseOrderStatus (status) {
@@ -1894,7 +1896,7 @@ module.exports = class bitget extends Exchange {
         // }
         // if ((type !== 'limit') && (type !== 'market')) {
         //     if ('pnl' in order) {
-        //         type = 'futures';
+        //         type = 'future';
         //     } else {
         //         type = 'swap';
         //     }
@@ -1927,7 +1929,7 @@ module.exports = class bitget extends Exchange {
             };
         }
         const clientOrderId = this.safeString (order, 'client_oid');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -2564,6 +2566,7 @@ module.exports = class bitget extends Exchange {
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': undefined,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': address,

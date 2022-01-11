@@ -52,13 +52,11 @@ module.exports = class idex extends Exchange {
             },
             'urls': {
                 'test': {
-                    'public': 'https://api-sandbox.idex.io',
-                    'private': 'https://api-sandbox.idex.io',
+                    'MATIC': 'https://api-sandbox-matic.idex.io',
                 },
                 'logo': 'https://user-images.githubusercontent.com/51840849/94481303-2f222100-01e0-11eb-97dd-bc14c5943a86.jpg',
                 'api': {
-                    'ETH': 'https://api-eth.idex.io',
-                    'BSC': 'https://api-bsc.idex.io',
+                    'MATIC': 'https://api-matic.idex.io',
                 },
                 'www': 'https://idex.io',
                 'doc': [
@@ -104,7 +102,7 @@ module.exports = class idex extends Exchange {
             'options': {
                 'defaultTimeInForce': 'gtc',
                 'defaultSelfTradePrevention': 'cn',
-                'network': 'ETH', // also supports BSC
+                'network': 'MATIC',
             },
             'exceptions': {
                 'INVALID_ORDER_QUANTITY': InvalidOrder,
@@ -185,25 +183,41 @@ module.exports = class idex extends Exchange {
             if (quote === 'ETH') {
                 minCost = minCostETH;
             }
-            const precision = {
-                'amount': parseInt (basePrecisionString),
-                'price': parseInt (quotePrecisionString),
-            };
             result.push ({
-                'symbol': symbol,
                 'id': marketId,
+                'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': undefined,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': undefined,
                 'type': 'spot',
                 'spot': true,
-                'active': active,
-                'info': entry,
-                'precision': precision,
+                'margin': false,
+                'swap': false,
+                'future': false,
+                'option': false,
+                'contract': false,
+                'linear': undefined,
+                'inverse': undefined,
                 'taker': taker,
                 'maker': maker,
+                'contractSize': undefined,
+                'active': active,
+                'expiry': undefined,
+                'expiryDatetime': undefined,
+                'strike': undefined,
+                'optionType': undefined,
+                'precision': {
+                    'amount': parseInt (basePrecisionString),
+                    'price': parseInt (quotePrecisionString),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': undefined,
+                        'max': undefined,
+                    },
                     'amount': {
                         'min': this.parseNumber (basePrecision),
                         'max': undefined,
@@ -217,6 +231,7 @@ module.exports = class idex extends Exchange {
                         'max': undefined,
                     },
                 },
+                'info': entry,
             });
         }
         return result;
@@ -582,6 +597,25 @@ module.exports = class idex extends Exchange {
         return result;
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
+        for (let i = 0; i < response.length; i++) {
+            const entry = response[i];
+            const currencyId = this.safeString (entry, 'asset');
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['total'] = this.safeString (entry, 'quantity');
+            account['free'] = this.safeString (entry, 'availableForTrade');
+            account['used'] = this.safeString (entry, 'locked');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         this.checkRequiredCredentials ();
         await this.loadMarkets ();
@@ -615,22 +649,7 @@ module.exports = class idex extends Exchange {
                 throw e;
             }
         }
-        const result = {
-            'info': response,
-            'timestamp': undefined,
-            'datetime': undefined,
-        };
-        for (let i = 0; i < response.length; i++) {
-            const entry = response[i];
-            const currencyId = this.safeString (entry, 'asset');
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['total'] = this.safeString (entry, 'quantity');
-            account['free'] = this.safeString (entry, 'availableForTrade');
-            account['used'] = this.safeString (entry, 'locked');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -849,13 +868,13 @@ module.exports = class idex extends Exchange {
         const marketId = this.safeString (order, 'market');
         const side = this.safeString (order, 'side');
         const symbol = this.safeSymbol (marketId, market, '-');
-        const trades = this.parseTrades (fills, market);
         const type = this.safeString (order, 'type');
-        const amount = this.safeNumber (order, 'originalQuantity');
-        const filled = this.safeNumber (order, 'executedQuantity');
-        const average = this.safeNumber (order, 'avgExecutionPrice');
-        const price = this.safeNumber (order, 'price');
+        const amount = this.safeString (order, 'originalQuantity');
+        const filled = this.safeString (order, 'executedQuantity');
+        const average = this.safeString (order, 'avgExecutionPrice');
+        const price = this.safeString (order, 'price');
         const rawStatus = this.safeString (order, 'status');
+        const timeInForce = this.safeStringUpper (order, 'timeInForce');
         const status = this.parseOrderStatus (rawStatus);
         return this.safeOrder ({
             'info': order,
@@ -866,7 +885,7 @@ module.exports = class idex extends Exchange {
             'lastTradeTimestamp': undefined,
             'symbol': symbol,
             'type': type,
-            'timeInForce': undefined,
+            'timeInForce': timeInForce,
             'postOnly': undefined,
             'side': side,
             'price': price,
@@ -878,8 +897,8 @@ module.exports = class idex extends Exchange {
             'remaining': undefined,
             'status': status,
             'fee': undefined,
-            'trades': trades,
-        });
+            'trades': fills,
+        }, market);
     }
 
     async associateWallet (walletAddress, params = {}) {
@@ -957,7 +976,11 @@ module.exports = class idex extends Exchange {
         const sideEnum = (side === 'buy') ? 0 : 1;
         const walletBytes = this.remove0xPrefix (this.walletAddress);
         const network = this.safeString (this.options, 'network', 'ETH');
-        const orderVersion = (network === 'ETH') ? 1 : 2;
+        const orderVersion = this.getSupportedMapping (network, {
+            'ETH': 1,
+            'BSC': 2,
+            'MATIC': 4,
+        });
         const amountString = this.amountToPrecision (symbol, amount);
         // https://docs.idex.io/#time-in-force
         const timeInForceEnums = {
@@ -1275,8 +1298,13 @@ module.exports = class idex extends Exchange {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'address': undefined,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': undefined,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'type': type,
             'amount': amount,
             'currency': code,

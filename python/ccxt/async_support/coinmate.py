@@ -11,7 +11,6 @@ from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
 from ccxt.base.errors import RateLimitExceeded
-from ccxt.base.precise import Precise
 
 
 class coinmate(Exchange):
@@ -254,9 +253,7 @@ class coinmate(Exchange):
             })
         return result
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privatePostBalances(params)
+    def parse_balance(self, response):
         balances = self.safe_value(response, 'data')
         result = {'info': response}
         currencyIds = list(balances.keys())
@@ -269,7 +266,12 @@ class coinmate(Exchange):
             account['used'] = self.safe_string(balance, 'reserved')
             account['total'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privatePostBalances(params)
+        return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -337,7 +339,7 @@ class coinmate(Exchange):
         }
         return self.safe_string(statuses, status, status)
 
-    def parse_transaction(self, item, currency=None):
+    def parse_transaction(self, transaction, currency=None):
         #
         # deposits
         #
@@ -372,17 +374,18 @@ class coinmate(Exchange):
         #         destinationTag: null
         #     }
         #
-        timestamp = self.safe_integer(item, 'timestamp')
-        amount = self.safe_number(item, 'amount')
-        fee = self.safe_number(item, 'fee')
-        txid = self.safe_string(item, 'txid')
-        address = self.safe_string(item, 'destination')
-        tag = self.safe_string(item, 'destinationTag')
-        currencyId = self.safe_string(item, 'amountCurrency')
+        timestamp = self.safe_integer(transaction, 'timestamp')
+        amount = self.safe_number(transaction, 'amount')
+        fee = self.safe_number(transaction, 'fee')
+        txid = self.safe_string(transaction, 'txid')
+        address = self.safe_string(transaction, 'destination')
+        tag = self.safe_string(transaction, 'destinationTag')
+        currencyId = self.safe_string(transaction, 'amountCurrency')
         code = self.safe_currency_code(currencyId, currency)
-        type = self.safe_string_lower(item, 'transferType')
-        status = self.parse_transaction_status(self.safe_string(item, 'transferStatus'))
-        id = self.safe_string(item, 'transactionId')
+        type = self.safe_string_lower(transaction, 'transferType')
+        status = self.parse_transaction_status(self.safe_string(transaction, 'transferStatus'))
+        id = self.safe_string(transaction, 'transactionId')
+        network = self.safe_string(transaction, 'walletType')
         return {
             'id': id,
             'timestamp': timestamp,
@@ -391,14 +394,19 @@ class coinmate(Exchange):
             'amount': amount,
             'type': type,
             'txid': txid,
+            'network': network,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
             'status': status,
             'fee': {
                 'cost': fee,
                 'currency': code,
             },
-            'info': item,
+            'info': transaction,
         }
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
@@ -414,8 +422,8 @@ class coinmate(Exchange):
         if since is not None:
             request['timestampFrom'] = since
         response = await self.privatePostTradeHistory(self.extend(request, params))
-        items = response['data']
-        return self.parse_trades(items, None, since, limit)
+        data = self.safe_value(response, 'data', [])
+        return self.parse_trades(data, None, since, limit)
 
     def parse_trade(self, trade, market=None):
         #
@@ -449,24 +457,21 @@ class coinmate(Exchange):
         market = self.safe_market(marketId, market, '_')
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'amount')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         side = self.safe_string_lower_2(trade, 'type', 'tradeType')
         type = self.safe_string_lower(trade, 'orderType')
         orderId = self.safe_string(trade, 'orderId')
         id = self.safe_string(trade, 'transactionId')
         timestamp = self.safe_integer_2(trade, 'timestamp', 'createdTimestamp')
         fee = None
-        feeCost = self.safe_number(trade, 'fee')
-        if feeCost is not None:
+        feeCostString = self.safe_string(trade, 'fee')
+        if feeCostString is not None:
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': market['quote'],
             }
         takerOrMaker = self.safe_string(trade, 'feeType')
         takerOrMaker = 'maker' if (takerOrMaker == 'MAKER') else 'taker'
-        return {
+        return self.safe_trade({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -476,11 +481,11 @@ class coinmate(Exchange):
             'side': side,
             'order': orderId,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -590,17 +595,17 @@ class coinmate(Exchange):
         id = self.safe_string(order, 'id')
         timestamp = self.safe_integer(order, 'timestamp')
         side = self.safe_string_lower(order, 'type')
-        price = self.safe_string(order, 'price')
-        amount = self.safe_string(order, 'originalAmount')
-        remaining = self.safe_string_2(order, 'remainingAmount', 'amount')
+        priceString = self.safe_string(order, 'price')
+        amountString = self.safe_string(order, 'originalAmount')
+        remainingString = self.safe_string_2(order, 'remainingAmount', 'amount')
         status = self.parse_order_status(self.safe_string(order, 'status'))
         type = self.parse_order_type(self.safe_string(order, 'orderTradeType'))
-        average = self.safe_string(order, 'avgPrice')
+        averageString = self.safe_string(order, 'avgPrice')
         marketId = self.safe_string(order, 'currencyPair')
         symbol = self.safe_symbol(marketId, market, '_')
         clientOrderId = self.safe_string(order, 'clientOrderId')
         stopPrice = self.safe_number(order, 'stopPrice')
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'timestamp': timestamp,
@@ -611,13 +616,13 @@ class coinmate(Exchange):
             'timeInForce': None,
             'postOnly': None,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': stopPrice,
-            'amount': amount,
+            'amount': amountString,
             'cost': None,
-            'average': average,
+            'average': averageString,
             'filled': None,
-            'remaining': remaining,
+            'remaining': remainingString,
             'status': status,
             'trades': None,
             'info': order,

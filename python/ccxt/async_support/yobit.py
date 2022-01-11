@@ -164,7 +164,9 @@ class yobit(Exchange):
                 'LUNA': 'Luna Coin',
                 'MASK': 'Yobit MASK',
                 'MDT': 'Midnight',
+                'MEME': 'Memez Token',  # conflict with Meme Inu / Degenerator Meme
                 'MIS': 'MIScoin',
+                'MM': 'MasterMint',  # conflict with MilliMeter
                 'NAV': 'NavajoCoin',
                 'NBT': 'NiceBytes',
                 'OMG': 'OMGame',
@@ -184,6 +186,7 @@ class yobit(Exchange):
                 'REP': 'Republicoin',
                 'RUR': 'RUB',
                 'SBTC': 'Super Bitcoin',
+                'SMC': 'SmartCoin',
                 'SOLO': 'SoloCoin',
                 'SUPER': 'SuperCoin',
                 'TTC': 'TittieCoin',
@@ -191,6 +194,7 @@ class yobit(Exchange):
                 'UST': 'Uservice',
                 'VOL': 'VolumeCoin',
                 'XIN': 'XINCoin',
+                'XMT': 'SummitCoin',
                 'XRA': 'Ratecoin',
             },
             'options': {
@@ -233,6 +237,26 @@ class yobit(Exchange):
             'orders': {},  # orders cache / emulation
         })
 
+    def parse_balance(self, response):
+        balances = self.safe_value(response, 'return', {})
+        timestamp = self.safe_integer(balances, 'server_time')
+        result = {
+            'info': response,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+        }
+        free = self.safe_value(balances, 'funds', {})
+        total = self.safe_value(balances, 'funds_incl_orders', {})
+        currencyIds = list(self.extend(free, total).keys())
+        for i in range(0, len(currencyIds)):
+            currencyId = currencyIds[i]
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(free, currencyId)
+            account['total'] = self.safe_string(total, currencyId)
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         await self.load_markets()
         response = await self.privatePostGetInfo(params)
@@ -261,24 +285,7 @@ class yobit(Exchange):
         #         }
         #     }
         #
-        balances = self.safe_value(response, 'return', {})
-        timestamp = self.safe_integer(balances, 'server_time')
-        result = {
-            'info': response,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-        }
-        free = self.safe_value(balances, 'funds', {})
-        total = self.safe_value(balances, 'funds_incl_orders', {})
-        currencyIds = list(self.extend(free, total).keys())
-        for i in range(0, len(currencyIds)):
-            currencyId = currencyIds[i]
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(free, currencyId)
-            account['total'] = self.safe_string(total, currencyId)
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def fetch_markets(self, params={}):
         response = await self.publicGetInfo(params)
@@ -605,7 +612,7 @@ class yobit(Exchange):
         fee = None
         type = 'limit'
         side = self.safe_string(order, 'type')
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,

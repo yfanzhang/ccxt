@@ -237,32 +237,32 @@ class bitfinex2 extends bitfinex {
                     'maker' => $this->parse_number('0.001'),
                     'taker' => $this->parse_number('0.002'),
                     'tiers' => array(
-                        'taker' => [
-                            [$this->parse_number('0'), $this->parse_number('0.002')],
-                            [$this->parse_number('500000'), $this->parse_number('0.002')],
-                            [$this->parse_number('1000000'), $this->parse_number('0.002')],
-                            [$this->parse_number('2500000'), $this->parse_number('0.002')],
-                            [$this->parse_number('5000000'), $this->parse_number('0.002')],
-                            [$this->parse_number('7500000'), $this->parse_number('0.002')],
-                            [$this->parse_number('10000000'), $this->parse_number('0.0018')],
-                            [$this->parse_number('15000000'), $this->parse_number('0.0016')],
-                            [$this->parse_number('20000000'), $this->parse_number('0.0014')],
-                            [$this->parse_number('25000000'), $this->parse_number('0.0012')],
-                            [$this->parse_number('30000000'), $this->parse_number('0.001')],
-                        ],
-                        'maker' => [
-                            [$this->parse_number('0'), $this->parse_number('0.001')],
-                            [$this->parse_number('500000'), $this->parse_number('0.0008')],
-                            [$this->parse_number('1000000'), $this->parse_number('0.0006')],
-                            [$this->parse_number('2500000'), $this->parse_number('0.0004')],
-                            [$this->parse_number('5000000'), $this->parse_number('0.0002')],
-                            [$this->parse_number('7500000'), $this->parse_number('0')],
-                            [$this->parse_number('10000000'), $this->parse_number('0')],
-                            [$this->parse_number('15000000'), $this->parse_number('0')],
-                            [$this->parse_number('20000000'), $this->parse_number('0')],
-                            [$this->parse_number('25000000'), $this->parse_number('0')],
-                            [$this->parse_number('30000000'), $this->parse_number('0')],
-                        ],
+                        'taker' => array(
+                            array( $this->parse_number('0'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('500000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('1000000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('2500000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('5000000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('7500000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('10000000'), $this->parse_number('0.0018') ),
+                            array( $this->parse_number('15000000'), $this->parse_number('0.0016') ),
+                            array( $this->parse_number('20000000'), $this->parse_number('0.0014') ),
+                            array( $this->parse_number('25000000'), $this->parse_number('0.0012') ),
+                            array( $this->parse_number('30000000'), $this->parse_number('0.001') ),
+                        ),
+                        'maker' => array(
+                            array( $this->parse_number('0'), $this->parse_number('0.001') ),
+                            array( $this->parse_number('500000'), $this->parse_number('0.0008') ),
+                            array( $this->parse_number('1000000'), $this->parse_number('0.0006') ),
+                            array( $this->parse_number('2500000'), $this->parse_number('0.0004') ),
+                            array( $this->parse_number('5000000'), $this->parse_number('0.0002') ),
+                            array( $this->parse_number('7500000'), $this->parse_number('0') ),
+                            array( $this->parse_number('10000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('15000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('20000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('25000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('30000000'), $this->parse_number('0') ),
+                        ),
                     ),
                 ),
                 'funding' => array(
@@ -343,6 +343,14 @@ class bitfinex2 extends bitfinex {
         return 'f' . $code;
     }
 
+    public function get_currency_name($code) {
+        // temporary fix for transpiler recognition, even though this is in parent class
+        if (is_array($this->options['currencyNames']) && array_key_exists($code, $this->options['currencyNames'])) {
+            return $this->options['currencyNames'][$code];
+        }
+        throw new NotSupported($this->id . ' ' . $code . ' not supported for withdrawal');
+    }
+
     public function fetch_status($params = array ()) {
         //
         //    [1] // operative
@@ -359,8 +367,8 @@ class bitfinex2 extends bitfinex {
     }
 
     public function fetch_markets($params = array ()) {
-        // todo drop v1 in favor of v2 configs
-        // pub:list:pair:exchange,pub:list:pair:$margin,pub:list:pair:$futures,pub:info:pair
+        // todo drop v1 in favor of v2 configs  ( temp-reference for v2update => https://pastebin.com/raw/S8CmqSHQ )
+        // pub:list:pair:exchange,pub:list:pair:$margin,pub:list:pair:futures,pub:info:pair
         $v2response = yield $this->publicGetConfPubListPairFutures ($params);
         $v1response = yield $this->v1GetSymbolsDetails ($params);
         $futuresMarketIds = $this->safe_value($v2response, 0, array());
@@ -372,8 +380,8 @@ class bitfinex2 extends bitfinex {
             if ($this->in_array($id, $futuresMarketIds)) {
                 $spot = false;
             }
-            $futures = !$spot;
-            $type = $spot ? 'spot' : 'futures';
+            $future = !$spot;
+            $type = $spot ? 'spot' : 'future';
             $baseId = null;
             $quoteId = null;
             if (mb_strpos($id, ':') !== false) {
@@ -426,7 +434,7 @@ class bitfinex2 extends bitfinex {
                 'swap' => false,
                 'spot' => $spot,
                 'margin' => $margin,
-                'futures' => $futures,
+                'future' => $future,
             );
         }
         return $result;
@@ -552,11 +560,14 @@ class bitfinex2 extends bitfinex {
             $fid = 'f' . $id;
             $result[$code] = array(
                 'id' => $fid,
+                'uppercaseId' => $id,
                 'code' => $code,
                 'info' => array( $id, $label, $pool, $feeValues, $undl ),
                 'type' => $type,
                 'name' => $name,
                 'active' => true,
+                'deposit' => null,
+                'withdraw' => null,
                 'fee' => $fee,
                 'precision' => $precision,
                 'limits' => array(
@@ -605,7 +616,7 @@ class bitfinex2 extends bitfinex {
                 $result[$code] = $account;
             }
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function transfer($code, $amount, $fromAccount, $toAccount, $params = array ()) {
@@ -1014,7 +1025,7 @@ class bitfinex2 extends bitfinex {
         $price = $this->safe_string($order, 16);
         $average = $this->safe_string($order, 17);
         $clientOrderId = $this->safe_string($order, 2);
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1304,7 +1315,7 @@ class bitfinex2 extends bitfinex {
     public function fetch_deposit_address($code, $params = array ()) {
         yield $this->load_markets();
         // todo rewrite for https://api-pub.bitfinex.com//v2/conf/pub:map:tx:method
-        $name = $this->getCurrencyName ($code);
+        $name = $this->get_currency_name($code);
         $request = array(
             'method' => $name,
             'wallet' => 'exchange', // 'exchange', 'margin', 'funding' and also old labels 'exchange', 'trading', 'deposit', respectively
@@ -1350,6 +1361,7 @@ class bitfinex2 extends bitfinex {
             'ERROR' => 'failed',
             'FAILURE' => 'failed',
             'CANCELED' => 'canceled',
+            'COMPLETED' => 'ok',
         );
         return $this->safe_string($statuses, $status, $status);
     }
@@ -1398,12 +1410,12 @@ class bitfinex2 extends bitfinex {
         //         -0.00135, // FEES
         //         null,
         //         null,
-        //         'DESTINATION_ADDRESS',
+        //         '0x38110e0Fc932CB2BE...........', // DESTINATION_ADDRESS
         //         null,
         //         null,
         //         null,
-        //         'TRANSACTION_ID',
-        //         "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE
+        //         '0x523ec8945500.....................................', // TRANSACTION_ID
+        //         "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE, might also be => null
         //     )
         //
         $transactionLength = is_array($transaction) ? count($transaction) : 0;
@@ -1418,7 +1430,7 @@ class bitfinex2 extends bitfinex {
         $feeCost = null;
         $txid = null;
         $addressTo = null;
-        if ($transactionLength < 9) {
+        if ($transactionLength === 8) {
             $data = $this->safe_value($transaction, 4, array());
             $timestamp = $this->safe_integer($transaction, 0);
             if ($currency !== null) {
@@ -1437,8 +1449,11 @@ class bitfinex2 extends bitfinex {
             }
             $tag = $this->safe_string($data, 3);
             $type = 'withdrawal';
-        } else {
+        } else if ($transactionLength === 22) {
             $id = $this->safe_string($transaction, 0);
+            $currencyId = $this->safe_string($transaction, 1);
+            $currency = $this->safe_currency($currencyId, $currency);
+            $code = $currency['code'];
             $timestamp = $this->safe_integer($transaction, 5);
             $updated = $this->safe_integer($transaction, 6);
             $status = $this->parse_transaction_status($this->safe_string($transaction, 9));
@@ -1463,6 +1478,7 @@ class bitfinex2 extends bitfinex {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'addressFrom' => null,
             'address' => $addressTo, // this is actually the $tag for XRP transfers (the address is missing)
             'addressTo' => $addressTo,
@@ -1489,7 +1505,7 @@ class bitfinex2 extends bitfinex {
         $method = 'privatePostAuthRMovementsHist';
         if ($code !== null) {
             $currency = $this->currency($code);
-            $request['currency'] = $currency['id'];
+            $request['currency'] = $currency['uppercaseId'];
             $method = 'privatePostAuthRMovementsCurrencyHist';
         }
         if ($since !== null) {
@@ -1518,12 +1534,12 @@ class bitfinex2 extends bitfinex {
         //             -0.00135, // FEES
         //             null,
         //             null,
-        //             'DESTINATION_ADDRESS',
+        //             '0x38110e0Fc932CB2BE...........', // DESTINATION_ADDRESS
         //             null,
         //             null,
         //             null,
-        //             'TRANSACTION_ID',
-        //             "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE
+        //             '0x523ec8945500.....................................', // TRANSACTION_ID
+        //             "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE, might also be => null
         //         )
         //     )
         //
@@ -1535,7 +1551,7 @@ class bitfinex2 extends bitfinex {
         yield $this->load_markets();
         $currency = $this->currency($code);
         // todo rewrite for https://api-pub.bitfinex.com//v2/conf/pub:map:tx:method
-        $name = $this->getCurrencyName ($code);
+        $name = $this->get_currency_name($code);
         $request = array(
             'method' => $name,
             'wallet' => 'exchange', // 'exchange', 'margin', 'funding' and also old labels 'exchange', 'trading', 'deposit', respectively

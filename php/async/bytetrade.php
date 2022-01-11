@@ -18,7 +18,7 @@ class bytetrade extends Exchange {
         return $this->deep_extend(parent::describe (), array(
             'id' => 'bytetrade',
             'name' => 'ByteTrade',
-            'countries' => ['HK'],
+            'countries' => array( 'HK' ),
             'rateLimit' => 500,
             'requiresWeb3' => true,
             'certified' => false,
@@ -65,8 +65,8 @@ class bytetrade extends Exchange {
                 ),
                 'logo' => 'https://user-images.githubusercontent.com/1294454/67288762-2f04a600-f4e6-11e9-9fd6-c60641919491.jpg',
                 'api' => array(
-                    'market' => 'https://api-v2.byte-trade.com',
-                    'public' => 'https://api-v2.byte-trade.com',
+                    'market' => 'https://api-v2.bttcdn.com',
+                    'public' => 'https://api-v2.bttcdn.com',
                 ),
                 'www' => 'https://www.byte-trade.com',
                 'doc' => 'https://docs.byte-trade.com/#description',
@@ -105,6 +105,8 @@ class bytetrade extends Exchange {
             ),
             'fees' => array(
                 'trading' => array(
+                    'tierBased' => false,
+                    'percentage' => true,
                     'taker' => 0.0008,
                     'maker' => 0.0008,
                 ),
@@ -208,6 +210,8 @@ class bytetrade extends Exchange {
                 'code' => $code,
                 'name' => $name,
                 'active' => $active,
+                'deposit' => null,
+                'withdraw' => null,
                 'precision' => $amountPrecision,
                 'fee' => null,
                 'limits' => array(
@@ -291,6 +295,20 @@ class bytetrade extends Exchange {
         return $result;
     }
 
+    public function parse_balance($response) {
+        $result = array( 'info' => $response );
+        for ($i = 0; $i < count($response); $i++) {
+            $balance = $response[$i];
+            $currencyId = $this->safe_string($balance, 'code');
+            $code = $this->safe_currency_code($currencyId, null);
+            $account = $this->account();
+            $account['free'] = $this->safe_string($balance, 'free');
+            $account['used'] = $this->safe_string($balance, 'used');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         if (!(is_array($params) && array_key_exists('userid', $params)) && ($this->apiKey === null)) {
             throw new ArgumentsRequired($this->id . ' fetchDeposits() requires $this->apiKey or userid argument');
@@ -299,18 +317,8 @@ class bytetrade extends Exchange {
         $request = array(
             'userid' => $this->apiKey,
         );
-        $balances = yield $this->publicGetBalance (array_merge($request, $params));
-        $result = array( 'info' => $balances );
-        for ($i = 0; $i < count($balances); $i++) {
-            $balance = $balances[$i];
-            $currencyId = $this->safe_string($balance, 'code');
-            $code = $this->safe_currency_code($currencyId, null);
-            $account = $this->account();
-            $account['free'] = $this->safe_string($balance, 'free');
-            $account['used'] = $this->safe_string($balance, 'used');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result, false);
+        $response = yield $this->publicGetBalance (array_merge($request, $params));
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -588,7 +596,7 @@ class bytetrade extends Exchange {
             'cost' => $feeCost,
             'rate' => $feeRate,
         );
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -637,12 +645,18 @@ class bytetrade extends Exchange {
         $baseId = $market['baseId'];
         $baseCurrency = $this->currency($market['base']);
         $amountTruncated = $this->amount_to_precision($symbol, $amount);
-        $amountChain = $this->toWei ($amountTruncated, $baseCurrency['precision']);
+        $amountTruncatedPrecise = new Precise ($amountTruncated);
+        $amountTruncatedPrecise->reduce ();
+        $amountTruncatedPrecise->decimals -= $baseCurrency['precision'];
+        $amountChain = (string) $amountTruncatedPrecise;
         $amountChainString = $this->number_to_string($amountChain);
         $quoteId = $market['quoteId'];
         $quoteCurrency = $this->currency($market['quote']);
         $priceRounded = $this->price_to_precision($symbol, $price);
-        $priceChain = $this->toWei ($priceRounded, $quoteCurrency['precision']);
+        $priceRoundedPrecise = new Precise ($priceRounded);
+        $priceRoundedPrecise->reduce ();
+        $priceRoundedPrecise->decimals -= $quoteCurrency['precision'];
+        $priceChain = (string) $priceRoundedPrecise;
         $priceChainString = $this->number_to_string($priceChain);
         $now = $this->milliseconds();
         $expiryDelta = $this->safe_integer($this->options, 'orderExpiration', 31536000000);
@@ -657,7 +671,7 @@ class bytetrade extends Exchange {
         $totalFeeRate = $this->safe_string($params, 'totalFeeRate', 8);
         $chainFeeRate = $this->safe_string($params, 'chainFeeRate', 1);
         $fee = $this->safe_string($params, 'fee', $defaultFee);
-        $eightBytes = Precise.stringPow ('2', '64');
+        $eightBytes = '18446744073709551616'; // 2 ** 64
         $allByteStringArray = array(
             $this->number_to_be(1, 32),
             $this->number_to_le((int) floor($now / 1000), 4),
@@ -1128,9 +1142,10 @@ class bytetrade extends Exchange {
             'code' => $currency['id'],
         );
         $response = yield $this->publicGetDepositaddress ($request);
-        $address = $this->safe_string($response[0], 'address');
-        $tag = $this->safe_string($response[0], 'tag');
-        $chainType = $this->safe_string($response[0], 'chainType');
+        $firstAddress = $this->safe_value($response, 0);
+        $address = $this->safe_string($firstAddress, 'address');
+        $tag = $this->safe_string($firstAddress, 'tag');
+        $chainType = $this->safe_string_upper($firstAddress, 'chainType');
         $this->check_address($address);
         return array(
             'currency' => $code,

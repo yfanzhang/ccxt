@@ -249,9 +249,7 @@ class lykke extends Exchange {
         return $this->parse_trades($response, $market, $since, $limit);
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privateGetWallets ($params);
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($response); $i++) {
             $balance = $response[$i];
@@ -262,7 +260,13 @@ class lykke extends Exchange {
             $account['used'] = $this->safe_string($balance, 'Reserved');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privateGetWallets ($params);
+        return $this->parse_balance($response);
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
@@ -494,7 +498,7 @@ class lykke extends Exchange {
         }
         $remaining = Precise::string_abs($this->safe_string($order, 'RemainingVolume'));
         $id = $this->safe_string($order, 'Id');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,

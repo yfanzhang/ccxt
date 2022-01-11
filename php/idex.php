@@ -55,13 +55,11 @@ class idex extends Exchange {
             ),
             'urls' => array(
                 'test' => array(
-                    'public' => 'https://api-sandbox.idex.io',
-                    'private' => 'https://api-sandbox.idex.io',
+                    'MATIC' => 'https://api-sandbox-matic.idex.io',
                 ),
                 'logo' => 'https://user-images.githubusercontent.com/51840849/94481303-2f222100-01e0-11eb-97dd-bc14c5943a86.jpg',
                 'api' => array(
-                    'ETH' => 'https://api-eth.idex.io',
-                    'BSC' => 'https://api-bsc.idex.io',
+                    'MATIC' => 'https://api-matic.idex.io',
                 ),
                 'www' => 'https://idex.io',
                 'doc' => array(
@@ -107,7 +105,7 @@ class idex extends Exchange {
             'options' => array(
                 'defaultTimeInForce' => 'gtc',
                 'defaultSelfTradePrevention' => 'cn',
-                'network' => 'ETH', // also supports BSC
+                'network' => 'MATIC',
             ),
             'exceptions' => array(
                 'INVALID_ORDER_QUANTITY' => '\\ccxt\\InvalidOrder',
@@ -188,25 +186,41 @@ class idex extends Exchange {
             if ($quote === 'ETH') {
                 $minCost = $minCostETH;
             }
-            $precision = array(
-                'amount' => intval($basePrecisionString),
-                'price' => intval($quotePrecisionString),
-            );
             $result[] = array(
-                'symbol' => $symbol,
                 'id' => $marketId,
+                'symbol' => $symbol,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'settleId' => null,
                 'type' => 'spot',
                 'spot' => true,
-                'active' => $active,
-                'info' => $entry,
-                'precision' => $precision,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
                 'taker' => $taker,
                 'maker' => $maker,
+                'contractSize' => null,
+                'active' => $active,
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'amount' => intval($basePrecisionString),
+                    'price' => intval($quotePrecisionString),
+                ),
                 'limits' => array(
+                    'leverage' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
                     'amount' => array(
                         'min' => $this->parse_number($basePrecision),
                         'max' => null,
@@ -220,6 +234,7 @@ class idex extends Exchange {
                         'max' => null,
                     ),
                 ),
+                'info' => $entry,
             );
         }
         return $result;
@@ -585,6 +600,25 @@ class idex extends Exchange {
         return $result;
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        for ($i = 0; $i < count($response); $i++) {
+            $entry = $response[$i];
+            $currencyId = $this->safe_string($entry, 'asset');
+            $code = $this->safe_currency_code($currencyId);
+            $account = $this->account();
+            $account['total'] = $this->safe_string($entry, 'quantity');
+            $account['free'] = $this->safe_string($entry, 'availableForTrade');
+            $account['used'] = $this->safe_string($entry, 'locked');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $this->check_required_credentials();
         $this->load_markets();
@@ -618,22 +652,7 @@ class idex extends Exchange {
                 throw $e;
             }
         }
-        $result = array(
-            'info' => $response,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        for ($i = 0; $i < count($response); $i++) {
-            $entry = $response[$i];
-            $currencyId = $this->safe_string($entry, 'asset');
-            $code = $this->safe_currency_code($currencyId);
-            $account = $this->account();
-            $account['total'] = $this->safe_string($entry, 'quantity');
-            $account['free'] = $this->safe_string($entry, 'availableForTrade');
-            $account['used'] = $this->safe_string($entry, 'locked');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -852,13 +871,13 @@ class idex extends Exchange {
         $marketId = $this->safe_string($order, 'market');
         $side = $this->safe_string($order, 'side');
         $symbol = $this->safe_symbol($marketId, $market, '-');
-        $trades = $this->parse_trades($fills, $market);
         $type = $this->safe_string($order, 'type');
-        $amount = $this->safe_number($order, 'originalQuantity');
-        $filled = $this->safe_number($order, 'executedQuantity');
-        $average = $this->safe_number($order, 'avgExecutionPrice');
-        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_string($order, 'originalQuantity');
+        $filled = $this->safe_string($order, 'executedQuantity');
+        $average = $this->safe_string($order, 'avgExecutionPrice');
+        $price = $this->safe_string($order, 'price');
         $rawStatus = $this->safe_string($order, 'status');
+        $timeInForce = $this->safe_string_upper($order, 'timeInForce');
         $status = $this->parse_order_status($rawStatus);
         return $this->safe_order(array(
             'info' => $order,
@@ -869,7 +888,7 @@ class idex extends Exchange {
             'lastTradeTimestamp' => null,
             'symbol' => $symbol,
             'type' => $type,
-            'timeInForce' => null,
+            'timeInForce' => $timeInForce,
             'postOnly' => null,
             'side' => $side,
             'price' => $price,
@@ -881,8 +900,8 @@ class idex extends Exchange {
             'remaining' => null,
             'status' => $status,
             'fee' => null,
-            'trades' => $trades,
-        ));
+            'trades' => $fills,
+        ), $market);
     }
 
     public function associate_wallet($walletAddress, $params = array ()) {
@@ -960,7 +979,11 @@ class idex extends Exchange {
         $sideEnum = ($side === 'buy') ? 0 : 1;
         $walletBytes = $this->remove0x_prefix($this->walletAddress);
         $network = $this->safe_string($this->options, 'network', 'ETH');
-        $orderVersion = ($network === 'ETH') ? 1 : 2;
+        $orderVersion = $this->get_supported_mapping($network, array(
+            'ETH' => 1,
+            'BSC' => 2,
+            'MATIC' => 4,
+        ));
         $amountString = $this->amount_to_precision($symbol, $amount);
         // https://docs.idex.io/#time-in-force
         $timeInForceEnums = array(
@@ -1278,8 +1301,13 @@ class idex extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'address' => null,
+            'addressTo' => null,
+            'addressFrom' => null,
             'tag' => null,
+            'tagTo' => null,
+            'tagFrom' => null,
             'type' => $type,
             'amount' => $amount,
             'currency' => $code,

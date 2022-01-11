@@ -670,24 +670,7 @@ class qtrade extends Exchange {
         ), $market);
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privateGetBalancesAll ($params);
-        //
-        //     {
-        //         "data":{
-        //             "balances" => array(
-        //                 array( "balance" => "100000000", "currency" => "BCH" ),
-        //                 array( "balance" => "99992435.78253015", "currency" => "LTC" ),
-        //                 array( "balance" => "99927153.76074182", "currency" => "BTC" ),
-        //             ),
-        //             "order_balances":array(),
-        //             "limit_used":0,
-        //             "limit_remaining":4000,
-        //             "limit":4000
-        //         }
-        //     }
-        //
+    public function parse_balance($response) {
         $data = $this->safe_value($response, 'data', array());
         $balances = $this->safe_value($data, 'balances', array());
         $result = array(
@@ -713,7 +696,28 @@ class qtrade extends Exchange {
             $account['used'] = $this->safe_string($balance, 'balance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetBalancesAll ($params);
+        //
+        //     {
+        //         "data":{
+        //             "balances" => array(
+        //                 array( "balance" => "100000000", "currency" => "BCH" ),
+        //                 array( "balance" => "99992435.78253015", "currency" => "LTC" ),
+        //                 array( "balance" => "99927153.76074182", "currency" => "BTC" ),
+        //             ),
+        //             "order_balances":array(),
+        //             "limit_used":0,
+        //             "limit_remaining":4000,
+        //             "limit":4000
+        //         }
+        //     }
+        //
+        return $this->parse_balance($response);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -842,9 +846,9 @@ class qtrade extends Exchange {
             $side = $this->safe_string($parts, 0);
             $orderType = $this->safe_string($parts, 1);
         }
-        $price = $this->safe_number($order, 'price');
-        $amount = $this->safe_number($order, 'market_amount');
-        $remaining = $this->safe_number($order, 'market_amount_remaining');
+        $price = $this->safe_string($order, 'price');
+        $amount = $this->safe_string($order, 'market_amount');
+        $remaining = $this->safe_string($order, 'market_amount_remaining');
         $open = $this->safe_value($order, 'open', false);
         $closeReason = $this->safe_string($order, 'close_reason');
         $status = null;
@@ -859,11 +863,6 @@ class qtrade extends Exchange {
         $market = $this->safe_market($marketId, $market, '_');
         $symbol = $market['symbol'];
         $rawTrades = $this->safe_value($order, 'trades', array());
-        $parsedTrades = $this->parse_trades($rawTrades, $market, null, null, array(
-            'order' => $id,
-            'side' => $side,
-            'type' => $orderType,
-        ));
         return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
@@ -886,8 +885,8 @@ class qtrade extends Exchange {
             'fee' => null,
             'fees' => null,
             'cost' => null,
-            'trades' => $parsedTrades,
-        ));
+            'trades' => $rawTrades,
+        ), $market);
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
@@ -1374,6 +1373,7 @@ class qtrade extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'addressFrom' => $addressFrom,
             'addressTo' => $addressTo,
             'address' => $address,

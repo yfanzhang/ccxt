@@ -148,7 +148,9 @@ class yobit extends Exchange {
                 'LUNA' => 'Luna Coin',
                 'MASK' => 'Yobit MASK',
                 'MDT' => 'Midnight',
+                'MEME' => 'Memez Token', // conflict with Meme Inu / Degenerator Meme
                 'MIS' => 'MIScoin',
+                'MM' => 'MasterMint', // conflict with MilliMeter
                 'NAV' => 'NavajoCoin',
                 'NBT' => 'NiceBytes',
                 'OMG' => 'OMGame',
@@ -168,6 +170,7 @@ class yobit extends Exchange {
                 'REP' => 'Republicoin',
                 'RUR' => 'RUB',
                 'SBTC' => 'Super Bitcoin',
+                'SMC' => 'SmartCoin',
                 'SOLO' => 'SoloCoin',
                 'SUPER' => 'SuperCoin',
                 'TTC' => 'TittieCoin',
@@ -175,6 +178,7 @@ class yobit extends Exchange {
                 'UST' => 'Uservice',
                 'VOL' => 'VolumeCoin',
                 'XIN' => 'XINCoin',
+                'XMT' => 'SummitCoin',
                 'XRA' => 'Ratecoin',
             ),
             'options' => array(
@@ -218,6 +222,28 @@ class yobit extends Exchange {
         ));
     }
 
+    public function parse_balance($response) {
+        $balances = $this->safe_value($response, 'return', array());
+        $timestamp = $this->safe_integer($balances, 'server_time');
+        $result = array(
+            'info' => $response,
+            'timestamp' => $timestamp,
+            'datetime' => $this->iso8601($timestamp),
+        );
+        $free = $this->safe_value($balances, 'funds', array());
+        $total = $this->safe_value($balances, 'funds_incl_orders', array());
+        $currencyIds = is_array(array_merge($free, $total)) ? array_keys(array_merge($free, $total)) : array();
+        for ($i = 0; $i < count($currencyIds); $i++) {
+            $currencyId = $currencyIds[$i];
+            $code = $this->safe_currency_code($currencyId);
+            $account = $this->account();
+            $account['free'] = $this->safe_string($free, $currencyId);
+            $account['total'] = $this->safe_string($total, $currencyId);
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $this->load_markets();
         $response = $this->privatePostGetInfo ($params);
@@ -246,25 +272,7 @@ class yobit extends Exchange {
         //         }
         //     }
         //
-        $balances = $this->safe_value($response, 'return', array());
-        $timestamp = $this->safe_integer($balances, 'server_time');
-        $result = array(
-            'info' => $response,
-            'timestamp' => $timestamp,
-            'datetime' => $this->iso8601($timestamp),
-        );
-        $free = $this->safe_value($balances, 'funds', array());
-        $total = $this->safe_value($balances, 'funds_incl_orders', array());
-        $currencyIds = is_array(array_merge($free, $total)) ? array_keys(array_merge($free, $total)) : array();
-        for ($i = 0; $i < count($currencyIds); $i++) {
-            $currencyId = $currencyIds[$i];
-            $code = $this->safe_currency_code($currencyId);
-            $account = $this->account();
-            $account['free'] = $this->safe_string($free, $currencyId);
-            $account['total'] = $this->safe_string($total, $currencyId);
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function fetch_markets($params = array ()) {
@@ -624,7 +632,7 @@ class yobit extends Exchange {
         $fee = null;
         $type = 'limit';
         $side = $this->safe_string($order, 'type');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,

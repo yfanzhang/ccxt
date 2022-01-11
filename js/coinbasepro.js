@@ -41,6 +41,7 @@ module.exports = class coinbasepro extends Exchange {
                 'fetchOrders': true,
                 'fetchOrderTrades': true,
                 'fetchTicker': true,
+                'fetchTickers': true,
                 'fetchTime': true,
                 'fetchTrades': true,
                 'fetchTransactions': true,
@@ -90,6 +91,7 @@ module.exports = class coinbasepro extends Exchange {
                         'products/{id}/ticker',
                         'products/{id}/trades',
                         'time',
+                        'products/spark-lines', // experimental
                     ],
                 },
                 'private': {
@@ -253,6 +255,8 @@ module.exports = class coinbasepro extends Exchange {
                 'type': this.safeString (details, 'type'),
                 'name': name,
                 'active': active,
+                'deposit': undefined,
+                'withdraw': undefined,
                 'fee': undefined,
                 'precision': precision,
                 'limits': {
@@ -381,9 +385,7 @@ module.exports = class coinbasepro extends Exchange {
         return result;
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetAccounts (params);
+    parseBalance (response) {
         const result = { 'info': response };
         for (let i = 0; i < response.length; i++) {
             const balance = response[i];
@@ -395,7 +397,13 @@ module.exports = class coinbasepro extends Exchange {
             account['total'] = this.safeString (balance, 'balance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetAccounts (params);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -430,7 +438,19 @@ module.exports = class coinbasepro extends Exchange {
 
     parseTicker (ticker, market = undefined) {
         //
-        // publicGetProductsIdTicker
+        // fetchTickers
+        //
+        //      [
+        //         1639472400, // timestamp
+        //         4.26, // low
+        //         4.38, // high
+        //         4.35, // open
+        //         4.27 // close
+        //      ]
+        //
+        // fetchTicker
+        //
+        //     publicGetProductsIdTicker
         //
         //     {
         //         "trade_id":843439,
@@ -442,7 +462,7 @@ module.exports = class coinbasepro extends Exchange {
         //         "volume":"1903188.03750000"
         //     }
         //
-        // publicGetProductsIdStats
+        //     publicGetProductsIdStats
         //
         //     {
         //         "open": "34.19000000",
@@ -451,33 +471,88 @@ module.exports = class coinbasepro extends Exchange {
         //         "volume": "2.41000000"
         //     }
         //
-        const timestamp = this.parse8601 (this.safeValue (ticker, 'time'));
-        const bid = this.safeNumber (ticker, 'bid');
-        const ask = this.safeNumber (ticker, 'ask');
-        const last = this.safeNumber2 (ticker, 'price', 'last');
+        let timestamp = undefined;
+        let bid = undefined;
+        let ask = undefined;
+        let last = undefined;
+        let high = undefined;
+        let low = undefined;
+        let open = undefined;
+        let volume = undefined;
         const symbol = (market === undefined) ? undefined : market['symbol'];
-        return {
+        if (Array.isArray (ticker)) {
+            last = this.safeNumber (ticker, 4);
+            timestamp = this.milliseconds ();
+        } else {
+            timestamp = this.parse8601 (this.safeValue (ticker, 'time'));
+            bid = this.safeNumber (ticker, 'bid');
+            ask = this.safeNumber (ticker, 'ask');
+            high = this.safeNumber (ticker, 'high');
+            low = this.safeNumber (ticker, 'low');
+            open = this.safeNumber (ticker, 'open');
+            last = this.safeNumber2 (ticker, 'price', 'last');
+            volume = this.safeNumber (ticker, 'volume');
+        }
+        return this.safeTicker ({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'high': this.safeNumber (ticker, 'high'),
-            'low': this.safeNumber (ticker, 'low'),
+            'high': high,
+            'low': low,
             'bid': bid,
             'bidVolume': undefined,
             'ask': ask,
             'askVolume': undefined,
             'vwap': undefined,
-            'open': this.safeNumber (ticker, 'open'),
+            'open': open,
             'close': last,
             'last': last,
             'previousClose': undefined,
             'change': undefined,
             'percentage': undefined,
             'average': undefined,
-            'baseVolume': this.safeNumber (ticker, 'volume'),
+            'baseVolume': volume,
             'quoteVolume': undefined,
             'info': ticker,
-        };
+        });
+    }
+
+    async fetchTickers (symbols = undefined, params = {}) {
+        await this.loadMarkets ();
+        const request = {};
+        const response = await this.publicGetProductsSparkLines (this.extend (request, params));
+        //
+        //     {
+        //         YYY-USD: [
+        //             [
+        //                 1639472400, // timestamp
+        //                 4.26, // low
+        //                 4.38, // high
+        //                 4.35, // open
+        //                 4.27 // close
+        //             ],
+        //             [
+        //                 1639468800,
+        //                 4.31,
+        //                 4.45,
+        //                 4.35,
+        //                 4.35
+        //             ],
+        //         ]
+        //     }
+        //
+        const result = {};
+        const marketIds = Object.keys (response);
+        const delimiter = '-';
+        for (let i = 0; i < marketIds.length; i++) {
+            const marketId = marketIds[i];
+            const entry = this.safeValue (response, marketId, []);
+            const first = this.safeValue (entry, 0, []);
+            const market = this.safeMarket (marketId, undefined, delimiter);
+            const symbol = market['symbol'];
+            result[symbol] = this.parseTicker (first, market);
+        }
+        return this.filterByArray (result, 'symbol', symbols);
     }
 
     async fetchTicker (symbol, params = {}) {
@@ -752,7 +827,7 @@ module.exports = class coinbasepro extends Exchange {
         const postOnly = this.safeValue (order, 'post_only');
         const stopPrice = this.safeNumber (order, 'stop_price');
         const clientOrderId = this.safeString (order, 'client_oid');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -1235,8 +1310,13 @@ module.exports = class coinbasepro extends Exchange {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'address': address,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': tag,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'type': type,
             'amount': amount,
             'currency': code,
@@ -1295,7 +1375,12 @@ module.exports = class coinbasepro extends Exchange {
                 }
             }
             const what = nonce + method + request + payload;
-            const secret = this.base64ToBinary (this.secret);
+            let secret = undefined;
+            try {
+                secret = this.base64ToBinary (this.secret);
+            } catch (e) {
+                throw new AuthenticationError (this.id + ' sign() invalid base64 secret');
+            }
             const signature = this.hmac (this.encode (what), secret, 'sha256', 'base64');
             headers = {
                 'CB-ACCESS-KEY': this.apiKey,

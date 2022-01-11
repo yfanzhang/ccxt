@@ -175,9 +175,7 @@ module.exports = class tidebit extends Exchange {
         return result;
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetMembersMe (params);
+    parseBalance (response) {
         const balances = this.safeValue (response, 'accounts');
         const result = { 'info': balances };
         for (let i = 0; i < balances.length; i++) {
@@ -189,7 +187,13 @@ module.exports = class tidebit extends Exchange {
             account['used'] = this.safeString (balance, 'locked');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetMembersMe (params);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -414,7 +418,7 @@ module.exports = class tidebit extends Exchange {
         const filled = this.safeString (order, 'executed_volume');
         const remaining = this.safeString (order, 'remaining_volume');
         const average = this.safeString (order, 'avg_price');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'timestamp': timestamp,

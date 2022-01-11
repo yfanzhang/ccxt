@@ -579,21 +579,7 @@ module.exports = class hollaex extends Exchange {
         ];
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetUserBalance (params);
-        //
-        //     {
-        //         "updated_at": "2020-03-02T22:27:38.428Z",
-        //         "btc_balance": 0,
-        //         "btc_pending": 0,
-        //         "btc_available": 0,
-        //         "eth_balance": 0,
-        //         "eth_pending": 0,
-        //         "eth_available": 0,
-        //         // ...
-        //     }
-        //
+    parseBalance (response) {
         const timestamp = this.parse8601 (this.safeString (response, 'updated_at'));
         const result = {
             'info': response,
@@ -609,7 +595,25 @@ module.exports = class hollaex extends Exchange {
             account['total'] = this.safeString (response, currencyId + '_balance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetUserBalance (params);
+        //
+        //     {
+        //         "updated_at": "2020-03-02T22:27:38.428Z",
+        //         "btc_balance": 0,
+        //         "btc_pending": 0,
+        //         "btc_available": 0,
+        //         "eth_balance": 0,
+        //         "eth_pending": 0,
+        //         "eth_available": 0,
+        //         // ...
+        //     }
+        //
+        return this.parseBalance (response);
     }
 
     async fetchOpenOrder (id, symbol = undefined, params = {}) {
@@ -812,7 +816,7 @@ module.exports = class hollaex extends Exchange {
         const amount = this.safeString (order, 'size');
         const filled = this.safeString (order, 'filled');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'timestamp': timestamp,
@@ -1222,6 +1226,7 @@ module.exports = class hollaex extends Exchange {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'addressFrom': addressFrom,
             'address': address,
             'addressTo': addressTo,

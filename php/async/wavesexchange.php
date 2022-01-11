@@ -19,7 +19,7 @@ class wavesexchange extends Exchange {
         return $this->deep_extend(parent::describe (), array(
             'id' => 'wavesexchange',
             'name' => 'Waves.Exchange',
-            'countries' => ['CH'], // Switzerland
+            'countries' => array( 'CH' ), // Switzerland
             'rateLimit' => 500,
             'certified' => true,
             'pro' => false,
@@ -35,6 +35,7 @@ class wavesexchange extends Exchange {
                 'fetchOHLCV' => true,
                 'fetchOpenOrders' => true,
                 'fetchOrderBook' => true,
+                'fetchOrder' => true,
                 'fetchOrders' => true,
                 'fetchTicker' => true,
                 'fetchTrades' => true,
@@ -386,6 +387,34 @@ class wavesexchange extends Exchange {
 
     public function fetch_markets($params = array ()) {
         $response = yield $this->marketGetTickers ();
+        //
+        //   array(
+        //       {
+        //           "symbol" => "WAVES/BTC",
+        //           "amountAssetID" => "WAVES",
+        //           "amountAssetName" => "Waves",
+        //           "amountAssetDecimals" => 8,
+        //           "amountAssetTotalSupply" => "106908766.00000000",
+        //           "amountAssetMaxSupply" => "106908766.00000000",
+        //           "amountAssetCirculatingSupply" => "106908766.00000000",
+        //           "priceAssetID" => "8LQW8f7P5d5PZM7GtZEBgaqRPGSzS3DfPuiXrURJ4AJS",
+        //           "priceAssetName" => "WBTC",
+        //           "priceAssetDecimals" => 8,
+        //           "priceAssetTotalSupply" => "20999999.96007507",
+        //           "priceAssetMaxSupply" => "20999999.96007507",
+        //           "priceAssetCirculatingSupply" => "20999999.66019601",
+        //           "24h_open" => "0.00032688",
+        //           "24h_high" => "0.00033508",
+        //           "24h_low" => "0.00032443",
+        //           "24h_close" => "0.00032806",
+        //           "24h_vwap" => "0.00032988",
+        //           "24h_volume" => "42349.69440104",
+        //           "24h_priceVolume" => "13.97037207",
+        //           "timestamp":1640232379124
+        //       }
+        //       ...
+        //   )
+        //
         $result = array();
         for ($i = 0; $i < count($response); $i++) {
             $entry = $response[$i];
@@ -395,22 +424,53 @@ class wavesexchange extends Exchange {
             $marketId = $this->safe_string($entry, 'symbol');
             list($base, $quote) = explode('/', $marketId);
             $symbol = $this->safe_currency_code($base) . '/' . $this->safe_currency_code($quote);
-            $precision = array(
-                'amount' => $this->safe_integer($entry, 'amountAssetDecimals'),
-                'price' => $this->safe_integer($entry, 'priceAssetDecimals'),
-            );
             $result[] = array(
-                'symbol' => $symbol,
                 'id' => $id,
+                'symbol' => $symbol,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'settleId' => null,
                 'type' => 'spot',
                 'spot' => true,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
+                'contractSize' => null,
                 'active' => null,
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'amount' => $this->safe_integer($entry, 'amountAssetDecimals'),
+                    'price' => $this->safe_integer($entry, 'priceAssetDecimals'),
+                ),
+                'limits' => array(
+                    'leverage' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
+                    'amount' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
+                    'price' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
+                    'cost' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
+                ),
                 'info' => $entry,
-                'precision' => $precision,
             );
         }
         return $result;
@@ -451,7 +511,7 @@ class wavesexchange extends Exchange {
             if (($limit !== null) && ($i > $limit)) {
                 break;
             }
-            $result[] = [$price, $amount];
+            $result[] = array( $price, $amount );
         }
         return $result;
     }
@@ -505,7 +565,7 @@ class wavesexchange extends Exchange {
                 $headers['content-type'] = 'application/x-www-form-urlencoded';
             }
             if ($isCancelOrder) {
-                $body = $this->json([$query['orderId']]);
+                $body = $this->json([ $query['orderId'] ]);
                 $queryString = '';
             }
             if (strlen($queryString) > 0) {
@@ -1178,6 +1238,32 @@ class wavesexchange extends Exchange {
         );
     }
 
+    public function fetch_order($id, $symbol = null, $params = array ()) {
+        $this->check_required_dependencies();
+        $this->check_required_keys();
+        yield $this->load_markets();
+        $market = null;
+        if ($symbol !== null) {
+            $market = $this->market($symbol);
+        }
+        $timestamp = $this->milliseconds();
+        $byteArray = array(
+            $this->base58_to_binary($this->apiKey),
+            $this->number_to_be($timestamp, 8),
+        );
+        $binary = $this->binary_concat_array($byteArray);
+        $hexSecret = bin2hex($this->base58_to_binary($this->secret));
+        $signature = $this->eddsa(bin2hex($binary), $hexSecret, 'ed25519');
+        $request = array(
+            'Timestamp' => (string) $timestamp,
+            'Signature' => $signature,
+            'publicKey' => $this->apiKey,
+            'orderId' => $id,
+        );
+        $response = yield $this->matcherGetMatcherOrderbookPublicKeyOrderId (array_merge($request, $params));
+        return $this->parse_order($response, $market);
+    }
+
     public function fetch_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
         $this->check_required_dependencies();
         $this->check_required_keys();
@@ -1317,7 +1403,7 @@ class wavesexchange extends Exchange {
         //         )
         //     }
         //
-        //     fetchClosedOrders
+        //     fetchOrder, fetchOrders, fetchOpenOrders, fetchClosedOrders
         //
         //     {
         //         $id => '81D9uKk2NfmZzfG7uaJsDtxqWFbJXZmjYvrL88h15fk8',
@@ -1336,7 +1422,8 @@ class wavesexchange extends Exchange {
         //             priceAsset => 'WAVES'
         //         ),
         //         avgWeighedPrice => 0,
-        //         version => 3
+        //         version => 3,
+        //         totalExecutedPriceAssets => 0,  // in fetchOpenOrder/s
         //     }
         //
         $timestamp = $this->safe_integer($order, 'timestamp');
@@ -1377,7 +1464,7 @@ class wavesexchange extends Exchange {
                 'fee' => $this->parse_number($this->currency_from_precision($currency, $this->safe_string($order, 'matcherFee'))),
             );
         }
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -1531,7 +1618,11 @@ class wavesexchange extends Exchange {
                 $result[$code] = $this->account();
             }
             $amount = $this->safe_string($reservedBalance, $currencyId);
-            $result[$code]['used'] = $this->currency_from_precision($code, $amount);
+            if (is_array($this->currencies) && array_key_exists($code, $this->currencies)) {
+                $result[$code]['used'] = $this->currency_from_precision($code, $amount);
+            } else {
+                $result[$code]['used'] = $amount;
+            }
         }
         $wavesRequest = array(
             'address' => $wavesAddress,
@@ -1553,7 +1644,7 @@ class wavesexchange extends Exchange {
         }
         $result['timestamp'] = $timestamp;
         $result['datetime'] = $this->iso8601($timestamp);
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -1716,7 +1807,7 @@ class wavesexchange extends Exchange {
             }
         }
         yield $this->load_markets();
-        $hexChars = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'];
+        $hexChars = array( '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'a', 'b', 'c', 'd', 'e', 'f' );
         $set = array();
         for ($i = 0; $i < count($hexChars); $i++) {
             $key = $hexChars[$i];

@@ -157,7 +157,7 @@ class zb extends Exchange {
             'api' => array(
                 'trade' => array(
                     'get' => array(
-                        'getFeeInfo',
+                        'getFeeInfo', // withdrawal fees
                     ),
                 ),
                 'public' => array(
@@ -267,22 +267,39 @@ class zb extends Exchange {
             $amountPrecisionString = $this->safe_string($market, 'amountScale');
             $pricePrecisionString = $this->safe_string($market, 'priceScale');
             $priceLimit = $this->parse_precision($pricePrecisionString);
-            $precision = array(
-                'amount' => intval($amountPrecisionString),
-                'price' => intval($pricePrecisionString),
-            );
             $result[] = array(
                 'id' => $id,
                 'symbol' => $symbol,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'settleId' => null,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
                 'type' => 'spot',
                 'spot' => true,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
+                'contractSize' => null,
                 'active' => true,
-                'precision' => $precision,
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'amount' => intval($amountPrecisionString),
+                    'price' => intval($pricePrecisionString),
+                ),
                 'limits' => array(
+                    'leverage' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
                     'amount' => array(
                         'min' => $this->safe_number($market, 'minAmount'),
                         'max' => null,
@@ -373,11 +390,7 @@ class zb extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privateGetGetAccountInfo ($params);
-        // todo => use this somehow
-        // $permissions = $response['result']['base'];
+    public function parse_balance($response) {
         $balances = $this->safe_value($response['result'], 'coins');
         $result = array(
             'info' => $response,
@@ -402,7 +415,15 @@ class zb extends Exchange {
             $account['used'] = $this->safe_string($balance, 'freez');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetGetAccountInfo ($params);
+        // todo => use this somehow
+        // $permissions = $response['result']['base'];
+        return $this->parse_balance($response);
     }
 
     public function parse_deposit_address($depositAddress, $currency = null) {
@@ -886,7 +907,7 @@ class zb extends Exchange {
                 'currency' => $feeCurrency,
             );
         }
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -1004,6 +1025,7 @@ class zb extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'addressFrom' => null,
             'address' => $address,
             'addressTo' => $address,

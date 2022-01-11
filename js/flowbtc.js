@@ -124,9 +124,7 @@ module.exports = class flowbtc extends Exchange {
         return result;
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privatePostGetAccountInfo (params);
+    parseBalance (response) {
         const balances = this.safeValue (response, 'currencies');
         const result = { 'info': response };
         for (let i = 0; i < balances.length; i++) {
@@ -138,7 +136,13 @@ module.exports = class flowbtc extends Exchange {
             account['total'] = this.safeString (balance, 'hold');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privatePostGetAccountInfo (params);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -246,7 +250,7 @@ module.exports = class flowbtc extends Exchange {
             };
             return await this.privatePostCancelOrder (this.extend (request, params));
         }
-        throw new ExchangeError (this.id + ' cancelOrder() requires an `ins` symbol parameter for cancelling an order');
+        throw new ExchangeError (this.id + ' cancelOrder() requires an `ins` parameter for cancelling an order');
     }
 
     sign (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {

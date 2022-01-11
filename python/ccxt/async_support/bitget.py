@@ -940,6 +940,8 @@ class bitget(Exchange):
                 'type': None,
                 'name': None,
                 'active': None,
+                'deposit': None,
+                'withdraw': None,
                 'fee': None,
                 'precision': None,
                 'limits': {
@@ -1570,7 +1572,7 @@ class bitget(Exchange):
             elif (type == 'frozen') or (type == 'lock'):
                 used = self.safe_string(result[code], 'used')
                 result[code]['used'] = Precise.string_add(used, self.safe_string(balance, 'balance'))
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def parse_swap_balance(self, response):
         #
@@ -1595,7 +1597,7 @@ class bitget(Exchange):
             account['total'] = self.safe_string(balance, 'equity')
             account['free'] = self.safe_string(balance, 'total_avail_balance')
             result[symbol] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def fetch_accounts(self, params={}):
         request = {
@@ -1702,7 +1704,7 @@ class bitget(Exchange):
             return self.parse_spot_balance(response)
         elif type == 'swap':
             return self.parse_swap_balance(response)
-        raise NotSupported(self.id + " fetchBalance does not support the '" + type + "' type(the type must be one of 'account', 'spot', 'margin', 'futures', 'swap')")
+        raise NotSupported(self.id + " fetchBalance does not support the '" + type + "' type(the type must be one of 'account', 'spot', or 'swap')")
 
     def parse_order_status(self, status):
         statuses = {
@@ -1838,7 +1840,7 @@ class bitget(Exchange):
         # }
         # if (type != 'limit') and (type != 'market'):
         #     if 'pnl' in order:
-        #         type = 'futures'
+        #         type = 'future'
         #     else:
         #         type = 'swap'
         #     }
@@ -1867,7 +1869,7 @@ class bitget(Exchange):
                 'currency': feeCurrency,
             }
         clientOrderId = self.safe_string(order, 'client_oid')
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -2460,6 +2462,7 @@ class bitget(Exchange):
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': None,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': address,

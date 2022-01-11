@@ -936,6 +936,8 @@ class bitget extends Exchange {
                 'type' => null,
                 'name' => null,
                 'active' => null,
+                'deposit' => null,
+                'withdraw' => null,
                 'fee' => null,
                 'precision' => null,
                 'limits' => array(
@@ -1609,7 +1611,7 @@ class bitget extends Exchange {
                 $result[$code]['used'] = Precise::string_add($used, $this->safe_string($balance, 'balance'));
             }
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function parse_swap_balance($response) {
@@ -1637,7 +1639,7 @@ class bitget extends Exchange {
             $account['free'] = $this->safe_string($balance, 'total_avail_balance');
             $result[$symbol] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function fetch_accounts($params = array ()) {
@@ -1757,7 +1759,7 @@ class bitget extends Exchange {
         } else if ($type === 'swap') {
             return $this->parse_swap_balance($response);
         }
-        throw new NotSupported($this->id . " fetchBalance does not support the '" . $type . "' $type (the $type must be one of 'account', 'spot', 'margin', 'futures', 'swap')");
+        throw new NotSupported($this->id . " fetchBalance does not support the '" . $type . "' $type (the $type must be one of 'account', 'spot', or 'swap')");
     }
 
     public function parse_order_status($status) {
@@ -1897,7 +1899,7 @@ class bitget extends Exchange {
         // }
         // if (($type !== 'limit') && ($type !== 'market')) {
         //     if (is_array($order) && array_key_exists('pnl', $order)) {
-        //         $type = 'futures';
+        //         $type = 'future';
         //     } else {
         //         $type = 'swap';
         //     }
@@ -1930,7 +1932,7 @@ class bitget extends Exchange {
             );
         }
         $clientOrderId = $this->safe_string($order, 'client_oid');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -2567,6 +2569,7 @@ class bitget extends Exchange {
             'id' => $id,
             'currency' => $code,
             'amount' => $amount,
+            'network' => null,
             'addressFrom' => $addressFrom,
             'addressTo' => $addressTo,
             'address' => $address,

@@ -85,9 +85,7 @@ class paymium(Exchange):
             },
         })
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privateGetUser(params)
+    def parse_balance(self, response):
         result = {'info': response}
         currencies = list(self.currencies.keys())
         for i in range(0, len(currencies)):
@@ -101,7 +99,12 @@ class paymium(Exchange):
                 account['free'] = self.safe_string(response, free)
                 account['used'] = self.safe_string(response, used)
                 result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privateGetUser(params)
+        return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()

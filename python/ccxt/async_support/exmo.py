@@ -32,7 +32,7 @@ class exmo(Exchange):
         return self.deep_extend(super(exmo, self).describe(), {
             'id': 'exmo',
             'name': 'EXMO',
-            'countries': ['ES', 'RU'],  # Spain, Russia
+            'countries': ['LT'],  # Lithuania
             'rateLimit': 350,  # once every 350 ms ≈ 180 requests per minute ≈ 3 requests per second
             'version': 'v1.1',
             'has': {
@@ -54,7 +54,6 @@ class exmo(Exchange):
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTrades': True,
-                'fetchTradingFee': True,
                 'fetchTradingFees': True,
                 'fetchTransactions': True,
                 'fetchWithdrawals': True,
@@ -511,6 +510,22 @@ class exmo(Exchange):
             self.safe_number(ohlcv, 'v'),
         ]
 
+    def parse_balance(self, response):
+        result = {'info': response}
+        free = self.safe_value(response, 'balances', {})
+        used = self.safe_value(response, 'reserved', {})
+        currencyIds = list(free.keys())
+        for i in range(0, len(currencyIds)):
+            currencyId = currencyIds[i]
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            if currencyId in free:
+                account['free'] = self.safe_string(free, currencyId)
+            if currencyId in used:
+                account['used'] = self.safe_string(used, currencyId)
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         await self.load_markets()
         response = await self.privatePostUserInfo(params)
@@ -526,20 +541,7 @@ class exmo(Exchange):
         #         },
         #     }
         #
-        result = {'info': response}
-        free = self.safe_value(response, 'balances', {})
-        used = self.safe_value(response, 'reserved', {})
-        currencyIds = list(free.keys())
-        for i in range(0, len(currencyIds)):
-            currencyId = currencyIds[i]
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            if currencyId in free:
-                account['free'] = self.safe_string(free, currencyId)
-            if currencyId in used:
-                account['used'] = self.safe_string(used, currencyId)
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -664,9 +666,9 @@ class exmo(Exchange):
         symbol = None
         id = self.safe_string(trade, 'trade_id')
         orderId = self.safe_string(trade, 'order_id')
-        price = self.safe_number(trade, 'price')
-        amount = self.safe_number(trade, 'quantity')
-        cost = self.safe_number(trade, 'amount')
+        priceString = self.safe_string(trade, 'price')
+        amountString = self.safe_string(trade, 'quantity')
+        costString = self.safe_string(trade, 'amount')
         side = self.safe_string(trade, 'type')
         type = None
         marketId = self.safe_string(trade, 'pair')
@@ -682,19 +684,19 @@ class exmo(Exchange):
             symbol = market['symbol']
         takerOrMaker = self.safe_string(trade, 'exec_type')
         fee = None
-        feeCost = self.safe_number(trade, 'commission_amount')
-        if feeCost is not None:
+        feeCostString = self.safe_string(trade, 'commission_amount')
+        if feeCostString is not None:
             feeCurrencyId = self.safe_string(trade, 'commission_currency')
             feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
-            feeRate = self.safe_number(trade, 'commission_percent')
-            if feeRate is not None:
-                feeRate /= 1000
+            feeRateString = self.safe_string(trade, 'commission_percent')
+            if feeRateString is not None:
+                feeRateString = Precise.string_div(feeRateString, '1000', 18)
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
-                'rate': feeRate,
+                'rate': feeRateString,
             }
-        return {
+        return self.safe_trade({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -704,11 +706,11 @@ class exmo(Exchange):
             'type': type,
             'side': side,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': costString,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -1221,6 +1223,7 @@ class exmo(Exchange):
                     'currency': code,
                     'rate': None,
                 }
+        network = self.safe_string(transaction, 'provider')
         return {
             'info': transaction,
             'id': id,
@@ -1228,6 +1231,7 @@ class exmo(Exchange):
             'datetime': self.iso8601(timestamp),
             'currency': code,
             'amount': amount,
+            'network': network,
             'address': address,
             'addressTo': address,
             'addressFrom': None,

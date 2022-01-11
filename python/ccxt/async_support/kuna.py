@@ -471,9 +471,7 @@ class kuna(Exchange):
             ])
         return result
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privateGetMembersMe(params)
+    def parse_balance(self, response):
         balances = self.safe_value(response, 'accounts')
         result = {'info': balances}
         for i in range(0, len(balances)):
@@ -484,7 +482,12 @@ class kuna(Exchange):
             account['free'] = self.safe_string(balance, 'balance')
             account['used'] = self.safe_string(balance, 'locked')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privateGetMembersMe(params)
+        return self.parse_balance(response)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -529,7 +532,7 @@ class kuna(Exchange):
         type = self.safe_string(order, 'type')
         side = self.safe_string(order, 'side')
         id = self.safe_string(order, 'id')
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'timestamp': timestamp,

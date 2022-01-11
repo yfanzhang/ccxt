@@ -382,20 +382,7 @@ class probit extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privateGetBalance ($params);
-        //
-        //     {
-        //         $data => array(
-        //             {
-        //                 "currency_id":"XRP",
-        //                 "total":"100",
-        //                 "available":"0",
-        //             }
-        //         )
-        //     }
-        //
+    public function parse_balance($response) {
         $result = array(
             'info' => $response,
             'timestamp' => null,
@@ -411,7 +398,24 @@ class probit extends Exchange {
             $account['free'] = $this->safe_string($balance, 'available');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetBalance ($params);
+        //
+        //     {
+        //         data => array(
+        //             {
+        //                 "currency_id":"XRP",
+        //                 "total":"100",
+        //                 "available":"0",
+        //             }
+        //         )
+        //     }
+        //
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -932,7 +936,7 @@ class probit extends Exchange {
             $clientOrderId = null;
         }
         $timeInForce = $this->safe_string_upper($order, 'time_in_force');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'info' => $order,
             'clientOrderId' => $clientOrderId,
@@ -1168,6 +1172,7 @@ class probit extends Exchange {
             'id' => $id,
             'currency' => $code,
             'amount' => $amount,
+            'network' => null,
             'addressFrom' => null,
             'address' => $address,
             'addressTo' => $address,
@@ -1179,6 +1184,7 @@ class probit extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'updated' => null,
             'fee' => $fee,
             'info' => $transaction,
         );

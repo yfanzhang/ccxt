@@ -35,8 +35,8 @@ module.exports = class ndax extends Exchange {
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
-                'fetchOrderTrades': true,
                 'fetchOrders': true,
+                'fetchOrderTrades': true,
                 'fetchTicker': true,
                 'fetchTrades': true,
                 'fetchWithdrawals': true,
@@ -194,7 +194,7 @@ module.exports = class ndax extends Exchange {
                 // these credentials are required for signIn() and withdraw()
                 'login': true,
                 'password': true,
-                'twofa': true,
+                // 'twofa': true,
             },
             'precisionMode': TICK_SIZE,
             'exceptions': {
@@ -225,8 +225,8 @@ module.exports = class ndax extends Exchange {
 
     async signIn (params = {}) {
         this.checkRequiredCredentials ();
-        if (this.login === undefined || this.password === undefined || this.twofa === undefined) {
-            throw new AuthenticationError (this.id + ' signIn() requires exchange.login, exchange.password and exchange.twofa credentials');
+        if (this.login === undefined || this.password === undefined) {
+            throw new AuthenticationError (this.id + ' signIn() requires exchange.login, exchange.password');
         }
         let request = {
             'grant_type': 'client_credentials', // the only supported value
@@ -248,6 +248,9 @@ module.exports = class ndax extends Exchange {
         }
         const pending2faToken = this.safeString (response, 'Pending2FaToken');
         if (pending2faToken !== undefined) {
+            if (this.twofa === undefined) {
+                throw new AuthenticationError (this.id + ' signIn() requires exchange.twofa credentials');
+            }
             this.options['pending2faToken'] = pending2faToken;
             request = {
                 'Code': this.oath (),
@@ -883,6 +886,26 @@ module.exports = class ndax extends Exchange {
         return result;
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
+        for (let i = 0; i < response.length; i++) {
+            const balance = response[i];
+            const currencyId = this.safeString (balance, 'ProductId');
+            if (currencyId in this.currencies_by_id) {
+                const code = this.safeCurrencyCode (currencyId);
+                const account = this.account ();
+                account['total'] = this.safeString (balance, 'Amount');
+                account['used'] = this.safeString (balance, 'Hold');
+                result[code] = account;
+            }
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         const omsId = this.safeInteger (this.options, 'omsId', 1);
         await this.loadMarkets ();
@@ -926,21 +949,7 @@ module.exports = class ndax extends Exchange {
         //         },
         //     ]
         //
-        const result = {
-            'info': response,
-            'timestamp': undefined,
-            'datetime': undefined,
-        };
-        for (let i = 0; i < response.length; i++) {
-            const balance = response[i];
-            const currencyId = this.safeString (balance, 'ProductId');
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['total'] = this.safeString (balance, 'Amount');
-            account['used'] = this.safeString (balance, 'Hold');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     parseLedgerEntryType (type) {
@@ -1153,19 +1162,13 @@ module.exports = class ndax extends Exchange {
         const side = this.safeStringLower (order, 'Side');
         const type = this.safeStringLower (order, 'OrderType');
         const clientOrderId = this.safeString2 (order, 'ReplacementClOrdId', 'ClientOrderId');
-        let price = this.safeNumber (order, 'Price', 0.0);
-        price = (price > 0.0) ? price : undefined;
-        const amount = this.safeNumber (order, 'OrigQuantity');
-        const filled = this.safeNumber (order, 'QuantityExecuted');
-        const cost = this.safeNumber (order, 'GrossValueExecuted');
-        let average = this.safeNumber (order, 'AvgPrice', 0.0);
-        average = (average > 0) ? average : undefined;
-        let stopPrice = this.safeNumber (order, 'StopPrice', 0.0);
-        stopPrice = (stopPrice > 0.0) ? stopPrice : undefined;
-        const timeInForce = undefined;
+        const price = this.safeString (order, 'Price');
+        const amount = this.safeString (order, 'OrigQuantity');
+        const filled = this.safeString (order, 'QuantityExecuted');
+        const cost = this.safeString (order, 'GrossValueExecuted');
+        const average = this.safeString (order, 'AvgPrice');
+        const stopPrice = this.parseNumber (this.omitZero (this.safeString (order, 'StopPrice')));
         const status = this.parseOrderStatus (this.safeString (order, 'OrderState'));
-        const fee = undefined;
-        const trades = undefined;
         return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1176,7 +1179,7 @@ module.exports = class ndax extends Exchange {
             'status': status,
             'symbol': symbol,
             'type': type,
-            'timeInForce': timeInForce,
+            'timeInForce': undefined,
             'postOnly': undefined,
             'side': side,
             'price': price,
@@ -1186,9 +1189,9 @@ module.exports = class ndax extends Exchange {
             'filled': filled,
             'average': average,
             'remaining': undefined,
-            'fee': fee,
-            'trades': trades,
-        });
+            'fee': undefined,
+            'trades': undefined,
+        }, market);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -2020,6 +2023,9 @@ module.exports = class ndax extends Exchange {
         const sessionToken = this.safeString (this.options, 'sessionToken');
         if (sessionToken === undefined) {
             throw new AuthenticationError (this.id + ' call signIn() method to obtain a session token');
+        }
+        if (this.twofa === undefined) {
+            throw new AuthenticationError (this.id + ' withdraw() requires exchange.twofa credentials');
         }
         this.checkAddress (address);
         const omsId = this.safeInteger (this.options, 'omsId', 1);

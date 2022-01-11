@@ -50,6 +50,7 @@ class eqonex(Exchange):
                 '6h': 5,
                 '1d': 6,
                 '7d': 7,
+                '1w': 7,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/51840849/122649755-1a076c80-d138-11eb-8f2e-9a9166a03d79.jpg',
@@ -296,6 +297,8 @@ class eqonex(Exchange):
             'precision': precision,
             'fee': fee,
             'active': active,
+            'deposit': None,
+            'withdraw': None,
             'limits': {
                 'amount': {
                     'min': None,
@@ -505,21 +508,18 @@ class eqonex(Exchange):
             type = self.parse_order_type(self.safe_string(trade, 'ordType'))
             priceString = self.safe_string(trade, 'lastPx')
             amountString = self.safe_string(trade, 'qty')
-            feeCost = self.safe_number(trade, 'commission')
-            if feeCost is not None:
-                feeCost = -feeCost
+            feeCostString = self.safe_string(trade, 'commission')
+            if feeCostString is not None:
+                feeCostString = Precise.string_neg(feeCostString)
                 feeCurrencyId = self.safe_string(trade, 'commCurrency')
                 feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
                 fee = {
-                    'cost': feeCost,
+                    'cost': feeCostString,
                     'currency': feeCurrencyCode,
                 }
         if (symbol is None) and (market is not None):
             symbol = market['symbol']
-        cost = self.parse_number(Precise.string_mul(amountString, priceString))
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        return {
+        return self.safe_trade({
             'info': trade,
             'id': id,
             'timestamp': timestamp,
@@ -529,11 +529,31 @@ class eqonex(Exchange):
             'type': type,
             'side': side,
             'takerOrMaker': None,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
+        }, market)
+
+    def parse_balance(self, response):
+        positions = self.safe_value(response, 'positions', [])
+        result = {
+            'info': response,
         }
+        for i in range(0, len(positions)):
+            position = positions[i]
+            assetType = self.safe_string(position, 'assetType')
+            if assetType == 'ASSET':
+                currencyId = self.safe_string(position, 'symbol')
+                code = self.safe_currency_code(currencyId)
+                quantityString = self.safe_string(position, 'quantity')
+                availableQuantityString = self.safe_string(position, 'availableQuantity')
+                scale = self.safe_integer(position, 'quantity_scale')
+                account = self.account()
+                account['free'] = self.convert_from_scale(availableQuantityString, scale)
+                account['total'] = self.convert_from_scale(quantityString, scale)
+                result[code] = account
+        return self.safe_balance(result)
 
     async def fetch_balance(self, params={}):
         await self.load_markets()
@@ -560,24 +580,7 @@ class eqonex(Exchange):
         #             },
         #         ]
         #     }
-        positions = self.safe_value(response, 'positions', [])
-        result = {
-            'info': response,
-        }
-        for i in range(0, len(positions)):
-            position = positions[i]
-            assetType = self.safe_string(position, 'assetType')
-            if assetType == 'ASSET':
-                currencyId = self.safe_string(position, 'symbol')
-                code = self.safe_currency_code(currencyId)
-                quantityString = self.safe_string(position, 'quantity')
-                availableQuantityString = self.safe_string(position, 'availableQuantity')
-                scale = self.safe_integer(position, 'quantity_scale')
-                account = self.account()
-                account['free'] = self.convert_from_scale(availableQuantityString, scale)
-                account['total'] = self.convert_from_scale(quantityString, scale)
-                result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -1071,6 +1074,7 @@ class eqonex(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'addressFrom': None,
             'address': address,
             'addressTo': None,
@@ -1261,15 +1265,16 @@ class eqonex(Exchange):
         fee = None
         currencyId = self.safe_integer(order, 'feeInstrumentId')
         feeCurrencyCode = self.safe_currency_code(currencyId)
+        feeCostString = None
         feeCost = self.safe_string(order, 'feeTotal')
         feeScale = self.safe_integer(order, 'fee_scale')
         if feeCost is not None:
             feeCost = Precise.string_neg(feeCost)
-            feeCost = self.parse_number(self.convert_from_scale(feeCost, feeScale))
+            feeCostString = self.convert_from_scale(feeCost, feeScale)
         if feeCost is not None:
             fee = {
                 'currency': feeCurrencyCode,
-                'cost': feeCost,
+                'cost': feeCostString,
                 'rate': None,
             }
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'timeInForce'))
@@ -1277,7 +1282,7 @@ class eqonex(Exchange):
             timeInForce = None
         stopPriceScale = self.safe_integer(order, 'stopPx_scale', 0)
         stopPrice = self.parse_number(self.convert_from_scale(self.safe_string(order, 'stopPx'), stopPriceScale))
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,

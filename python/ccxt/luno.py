@@ -35,7 +35,6 @@ class luno(Exchange):
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTrades': True,
-                'fetchTradingFee': True,
                 'fetchTradingFees': True,
             },
             'urls': {
@@ -194,19 +193,7 @@ class luno(Exchange):
             })
         return result
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.privateGetBalance(params)
-        #
-        #     {
-        #         'balance': [
-        #             {'account_id': '119...1336','asset': 'XBT','balance': '0.00','reserved': '0.00','unconfirmed': '0.00'},
-        #             {'account_id': '66...289','asset': 'XBT','balance': '0.00','reserved': '0.00','unconfirmed': '0.00'},
-        #             {'account_id': '718...5300','asset': 'ETH','balance': '0.00','reserved': '0.00','unconfirmed': '0.00'},
-        #             {'account_id': '818...7072','asset': 'ZAR','balance': '0.001417','reserved': '0.00','unconfirmed': '0.00'}]}
-        #         ]
-        #     }
-        #
+    def parse_balance(self, response):
         wallets = self.safe_value(response, 'balance', [])
         result = {
             'info': response,
@@ -230,7 +217,22 @@ class luno(Exchange):
                 account['used'] = reservedUnconfirmed
                 account['total'] = balanceUnconfirmed
                 result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privateGetBalance(params)
+        #
+        #     {
+        #         'balance': [
+        #             {'account_id': '119...1336','asset': 'XBT','balance': '0.00','reserved': '0.00','unconfirmed': '0.00'},
+        #             {'account_id': '66...289','asset': 'XBT','balance': '0.00','reserved': '0.00','unconfirmed': '0.00'},
+        #             {'account_id': '718...5300','asset': 'ETH','balance': '0.00','reserved': '0.00','unconfirmed': '0.00'},
+        #             {'account_id': '818...7072','asset': 'ZAR','balance': '0.001417','reserved': '0.00','unconfirmed': '0.00'}]}
+        #         ]
+        #     }
+        #
+        return self.parse_balance(response)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -297,7 +299,7 @@ class luno(Exchange):
             if market is not None:
                 fee['currency'] = market['base']
         id = self.safe_string(order, 'order_id')
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'datetime': self.iso8601(timestamp),

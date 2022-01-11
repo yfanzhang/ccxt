@@ -11,7 +11,6 @@ use \ccxt\ArgumentsRequired;
 use \ccxt\BadSymbol;
 use \ccxt\InvalidOrder;
 use \ccxt\NetworkError;
-use \ccxt\Precise;
 
 class cdax extends Exchange {
 
@@ -36,7 +35,7 @@ class cdax extends Exchange {
                 'createOrder' => true,
                 'fetchBalance' => true,
                 'fetchClosedOrders' => true,
-                'fetchCurrencies' => false,
+                'fetchCurrencies' => true,
                 'fetchDepositAddress' => false,
                 'fetchDepositAddressesByNetwork' => false,
                 'fetchDeposits' => true,
@@ -572,34 +571,56 @@ class cdax extends Exchange {
         //
         // fetchTrades (public)
         //
-        //     {
-        //         "amount" => 0.010411000000000000,
-        //         "trade-$id" => 102090736910,
-        //         "ts" => 1583497692182,
-        //         "id" => 10500517034273194594947,
-        //         "price" => 9096.050000000000000000,
-        //         "direction" => "sell"
-        //     }
+        //      {
+        //          "id" => "112522757755423628681413936",
+        //          "ts" => "1638457111917",
+        //          "trade-$id" => "100454385963",
+        //          "amount" => "13.7962",
+        //          "price" => "1.697867",
+        //          "direction" => "buy"
+        //      }
         //
         // fetchMyTrades (private)
         //
-        //     array(
-        //          'symbol' => 'swftcbtc',
-        //          'fee-currency' => 'swftc',
-        //          'filled-fees' => '0',
-        //          'source' => 'spot-api',
-        //          'id' => 83789509854000,
-        //          'type' => 'buy-limit',
-        //          'order-id' => 83711103204909,
-        //          'filled-points' => '0.005826843283532154',
-        //          'fee-deduct-currency' => 'ht',
-        //          'filled-amount' => '45941.53',
-        //          'price' => '0.0000001401',
-        //          'created-at' => 1597933260729,
-        //          'match-id' => 100087455560,
-        //          'role' => 'maker',
-        //          'trade-id' => 100050305348
-        //     ),
+        //      array(
+        //          "symbol" => "adausdt",
+        //          "fee-currency" => "usdt",
+        //          "source" => "spot-api",
+        //          "order-$id" => "423628498050504",
+        //          "created-at" => "1638455779233",
+        //          "role" => "taker",
+        //          "price" => "1.672487",
+        //          "match-$id" => "112521868633",
+        //          "trade-$id" => "100454375614",
+        //          "filled-amount" => "6.8",
+        //          "filled-fees" => "0.0227458232",
+        //          "filled-points" => "0.0",
+        //          "fee-deduct-currency" => "",
+        //          "fee-deduct-state" => "done",
+        //          "id" => "422419583501532",
+        //          "type" => "sell-$market"
+        //      ),
+        //
+        // fetchOrderTrades (private)
+        //
+        //      {
+        //          "symbol" => "adausdt",
+        //          "fee-currency" => "usdt",
+        //          "source" => "spot-api",
+        //          "match-$id" => "112521868633",
+        //          "trade-$id" => "100454375614",
+        //          "role" => "taker",
+        //          "order-$id" => "423628498050504",
+        //          "price" => "1.672487",
+        //          "created-at" => "1638455779233",
+        //          "filled-amount" => "6.8",
+        //          "filled-fees" => "0.0227458232",
+        //          "filled-points" => "0.0",
+        //          "fee-deduct-currency" => "",
+        //          "fee-deduct-state" => "done",
+        //          "id" => "422419583501532",
+        //          "type" => "sell-$market"
+        //      }
         //
         $marketId = $this->safe_string($trade, 'symbol');
         $symbol = $this->safe_symbol($marketId, $market);
@@ -615,28 +636,25 @@ class cdax extends Exchange {
         $takerOrMaker = $this->safe_string($trade, 'role');
         $priceString = $this->safe_string($trade, 'price');
         $amountString = $this->safe_string_2($trade, 'filled-amount', 'amount');
-        $price = $this->parse_number($priceString);
-        $amount = $this->parse_number($amountString);
-        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $fee = null;
-        $feeCost = $this->safe_number($trade, 'filled-fees');
+        $feeCostString = $this->safe_string($trade, 'filled-fees');
         $feeCurrency = $this->safe_currency_code($this->safe_string($trade, 'fee-currency'));
-        $filledPoints = $this->safe_number($trade, 'filled-points');
+        $filledPoints = $this->safe_string($trade, 'filled-points');
         if ($filledPoints !== null) {
-            if (($feeCost === null) || ($feeCost === 0.0)) {
-                $feeCost = $filledPoints;
+            if (($feeCostString === null) || ($feeCostString === '0.0')) {
+                $feeCostString = $filledPoints;
                 $feeCurrency = $this->safe_currency_code($this->safe_string($trade, 'fee-deduct-currency'));
             }
         }
-        if ($feeCost !== null) {
+        if ($feeCostString !== null) {
             $fee = array(
-                'cost' => $feeCost,
+                'cost' => $feeCostString,
                 'currency' => $feeCurrency,
             );
         }
         $tradeId = $this->safe_string_2($trade, 'trade-id', 'tradeId');
         $id = $this->safe_string($trade, 'id', $tradeId);
-        return array(
+        return $this->safe_trade(array(
             'id' => $id,
             'info' => $trade,
             'order' => $order,
@@ -646,11 +664,11 @@ class cdax extends Exchange {
             'type' => $type,
             'side' => $side,
             'takerOrMaker' => $takerOrMaker,
-            'price' => $price,
-            'amount' => $amount,
-            'cost' => $cost,
+            'price' => $priceString,
+            'amount' => $amountString,
+            'cost' => null,
             'fee' => $fee,
-        );
+        ), $market);
     }
 
     public function fetch_order_trades($id, $symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -785,125 +803,98 @@ class cdax extends Exchange {
     }
 
     public function fetch_currencies($params = array ()) {
-        $response = yield $this->v2PublicGetReferenceCurrencies ();
+        $request = array(
+            'language' => $this->options['language'],
+        );
+        $response = yield $this->publicGetSettingsCurrencys (array_merge($request, $params));
+        //
         //     {
-        //       "code" => 200,
-        //       "data" => array(
-        //         {
-        //           "currency" => "sxp",
-        //           "assetType" => "1",
-        //           "chains" => array(
+        //         "status":"ok",
+        //         "data":[
         //             {
-        //               "chain" => "sxp",
-        //               "displayName" => "ERC20",
-        //               "baseChain" => "ETH",
-        //               "baseChainProtocol" => "ERC20",
-        //               "isDynamic" => true,
-        //               "numOfConfirmations" => "12",
-        //               "numOfFastConfirmations" => "12",
-        //               "depositStatus" => "allowed",
-        //               "minDepositAmt" => "0.23",
-        //               "withdrawStatus" => "allowed",
-        //               "minWithdrawAmt" => "0.23",
-        //               "withdrawPrecision" => "8",
-        //               "maxWithdrawAmt" => "227000.000000000000000000",
-        //               "withdrawQuotaPerDay" => "227000.000000000000000000",
-        //               "withdrawQuotaPerYear" => null,
-        //               "withdrawQuotaTotal" => null,
-        //               "withdrawFeeType" => "fixed",
-        //               "transactFeeWithdraw" => "11.1653",
-        //               "addrWithTag" => false,
-        //               "addrDepositTag" => false
+        //                 "currency-addr-with-tag":false,
+        //                 "fast-confirms":12,
+        //                 "safe-confirms":12,
+        //                 "currency-type":"eth",
+        //                 "quote-$currency":true,
+        //                 "withdraw-enable-timestamp":1609430400000,
+        //                 "deposit-enable-timestamp":1609430400000,
+        //                 "currency-partition":"all",
+        //                 "support-sites":["OTC","INSTITUTION","MINEPOOL"],
+        //                 "withdraw-$precision":6,
+        //                 "visible-assets-timestamp":1508839200000,
+        //                 "deposit-min-amount":"1",
+        //                 "withdraw-min-amount":"10",
+        //                 "show-$precision":"8",
+        //                 "tags":"",
+        //                 "weight":23,
+        //                 "full-$name":"Tether USDT",
+        //                 "otc-enable":1,
+        //                 "visible":true,
+        //                 "white-enabled":false,
+        //                 "country-disabled":false,
+        //                 "deposit-enabled":true,
+        //                 "withdraw-enabled":true,
+        //                 "name":"usdt",
+        //                 "state":"online",
+        //                 "display-$name":"USDT",
+        //                 "suspend-withdraw-desc":null,
+        //                 "withdraw-desc":"Minimum withdrawal amount => 10 USDT (ERC20). !>_<!To ensure the safety of your funds, your withdrawal $request will be manually reviewed if your security strategy or password is changed. Please wait for phone calls or emails from our staff.!>_<!Please make sure that your computer and browser are secure and your information is protected from being tampered or leaked.",
+        //                 "suspend-deposit-desc":null,
+        //                 "deposit-desc":"Please don’t deposit any other digital assets except USDT to the above address. Otherwise, you may lose your assets permanently. !>_<!Depositing to the above address requires confirmations of the entire network. It will arrive after 12 confirmations, and it will be available to withdraw after 12 confirmations. !>_<!Minimum deposit amount => 1 USDT. Any deposits less than the minimum will not be credited or refunded.!>_<!Your deposit address won’t change often. If there are any changes, we will notify you via announcement or email.!>_<!Please make sure that your computer and browser are secure and your information is protected from being tampered or leaked.",
+        //                 "suspend-$visible-desc":null
         //             }
-        //           ),
-        //           "instStatus" => "normal"
-        //         }
-        //       )
+        //         ]
         //     }
         //
-        $data = $this->safe_value($response, 'data', array());
+        $currencies = $this->safe_value($response, 'data');
         $result = array();
-        for ($i = 0; $i < count($data); $i++) {
-            $entry = $data[$i];
-            $currencyId = $this->safe_string($entry, 'currency');
-            $code = $this->safe_currency_code($currencyId);
-            $chains = $this->safe_value($entry, 'chains', array());
-            $networks = array();
-            $instStatus = $this->safe_string($entry, 'instStatus');
-            $currencyActive = $instStatus === 'normal';
-            $fee = null;
-            $precision = null;
-            $minWithdraw = null;
-            $maxWithdraw = null;
-            for ($j = 0; $j < count($chains); $j++) {
-                $chain = $chains[$j];
-                $networkId = $this->safe_string($chain, 'chain');
-                $baseChainProtocol = $this->safe_string($chain, 'baseChainProtocol');
-                $huobiToken = 'h' . $currencyId;
-                if ($baseChainProtocol === null) {
-                    if ($huobiToken === $networkId) {
-                        $baseChainProtocol = 'ERC20';
-                    } else {
-                        $baseChainProtocol = $this->safe_string($chain, 'displayName');
-                    }
-                }
-                $network = $this->safe_network($baseChainProtocol);
-                $minWithdraw = $this->safe_number($chain, 'minWithdrawAmt');
-                $maxWithdraw = $this->safe_number($chain, 'maxWithdrawAmt');
-                $withdraw = $this->safe_string($chain, 'withdrawStatus');
-                $deposit = $this->safe_string($chain, 'depositStatus');
-                $active = ($withdraw === 'allowed') && ($deposit === 'allowed');
-                $precision = $this->safe_integer($chain, 'withdrawPrecision');
-                $fee = $this->safe_number($chain, 'transactFeeWithdraw');
-                $networks[$network] = array(
-                    'info' => $chain,
-                    'id' => $networkId,
-                    'network' => $network,
-                    'limits' => array(
-                        'withdraw' => array(
-                            'min' => $minWithdraw,
-                            'max' => $maxWithdraw,
-                        ),
-                    ),
-                    'active' => $active,
-                    'fee' => $fee,
-                    'precision' => $precision,
-                );
-            }
-            $networksKeys = is_array($networks) ? array_keys($networks) : array();
-            $networkLength = is_array($networksKeys) ? count($networksKeys) : 0;
+        for ($i = 0; $i < count($currencies); $i++) {
+            $currency = $currencies[$i];
+            $id = $this->safe_value($currency, 'name');
+            $precision = $this->safe_integer($currency, 'withdraw-precision');
+            $code = $this->safe_currency_code($id);
+            $depositEnabled = $this->safe_value($currency, 'deposit-enabled');
+            $withdrawEnabled = $this->safe_value($currency, 'withdraw-enabled');
+            $countryDisabled = $this->safe_value($currency, 'country-disabled');
+            $visible = $this->safe_value($currency, 'visible', false);
+            $state = $this->safe_string($currency, 'state');
+            $active = $visible && $depositEnabled && $withdrawEnabled && ($state === 'online') && !$countryDisabled;
+            $name = $this->safe_string($currency, 'display-name');
             $result[$code] = array(
-                'info' => $entry,
+                'id' => $id,
                 'code' => $code,
-                'id' => $currencyId,
-                'active' => $currencyActive,
-                'fee' => ($networkLength <= 1) ? $fee : null,
-                'name' => null,
+                'type' => 'crypto',
+                // 'payin' => $currency['deposit-enabled'],
+                // 'payout' => $currency['withdraw-enabled'],
+                // 'transfer' => null,
+                'name' => $name,
+                'active' => $active,
+                'deposit' => $depositEnabled,
+                'withdraw' => $withdrawEnabled,
+                'fee' => null, // todo need to fetch from fee endpoint
+                'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
-                        'min' => null,
-                        'max' => null,
+                        'min' => pow(10, -$precision),
+                        'max' => pow(10, $precision),
+                    ),
+                    'deposit' => array(
+                        'min' => $this->safe_number($currency, 'deposit-min-amount'),
+                        'max' => pow(10, $precision),
                     ),
                     'withdraw' => array(
-                        'min' => ($networkLength <= 1) ? $minWithdraw : null,
-                        'max' => ($networkLength <= 1) ? $maxWithdraw : null,
+                        'min' => $this->safe_number($currency, 'withdraw-min-amount'),
+                        'max' => pow(10, $precision),
                     ),
                 ),
-                'precision' => ($networkLength <= 1) ? $precision : null,
-                'networks' => $networks,
+                'info' => $currency,
             );
         }
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        yield $this->load_accounts();
-        $method = $this->options['fetchBalanceMethod'];
-        $request = array(
-            'id' => $this->accounts[0]['id'],
-        );
-        $response = yield $this->$method (array_merge($request, $params));
+    public function parse_balance($response) {
         $balances = $this->safe_value($response['data'], 'list', array());
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($balances); $i++) {
@@ -924,7 +915,18 @@ class cdax extends Exchange {
             }
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        yield $this->load_accounts();
+        $method = $this->options['fetchBalanceMethod'];
+        $request = array(
+            'id' => $this->accounts[0]['id'],
+        );
+        $response = yield $this->$method (array_merge($request, $params));
+        return $this->parse_balance($response);
     }
 
     public function fetch_orders_by_states($states, $symbol = null, $since = null, $limit = null, $params = array ()) {
@@ -1058,13 +1060,13 @@ class cdax extends Exchange {
         //     {                  $id =>  13997833014,
         //                    $symbol => "ethbtc",
         //              'account-id' =>  3398321,
-        //                    $amount => "0.045000000000000000",
-        //                     $price => "0.034014000000000000",
+        //                    amount => "0.045000000000000000",
+        //                     price => "0.034014000000000000",
         //              'created-at' =>  1545836976871,
         //                      $type => "sell-limit",
-        //            'field-amount' => "0.045000000000000000", // they have fixed it for $filled-$amount
-        //       'field-cash-amount' => "0.001530630000000000", // they have fixed it for $filled-cash-$amount
-        //              'field-fees' => "0.000003061260000000", // they have fixed it for $filled-fees
+        //            'field-amount' => "0.045000000000000000", // they have fixed it for filled-amount
+        //       'field-cash-amount' => "0.001530630000000000", // they have fixed it for filled-cash-amount
+        //              'field-fees' => "0.000003061260000000", // they have fixed it for filled-fees
         //             'finished-at' =>  1545837948214,
         //                    source => "spot-api",
         //                     state => "filled",
@@ -1073,13 +1075,13 @@ class cdax extends Exchange {
         //     {                  $id =>  20395337822,
         //                    $symbol => "ethbtc",
         //              'account-id' =>  5685075,
-        //                    $amount => "0.001000000000000000",
-        //                     $price => "0.0",
+        //                    amount => "0.001000000000000000",
+        //                     price => "0.0",
         //              'created-at' =>  1545831584023,
         //                      $type => "buy-$market",
-        //            'field-amount' => "0.029100000000000000", // they have fixed it for $filled-$amount
-        //       'field-cash-amount' => "0.000999788700000000", // they have fixed it for $filled-cash-$amount
-        //              'field-fees' => "0.000058200000000000", // they have fixed it for $filled-fees
+        //            'field-amount' => "0.029100000000000000", // they have fixed it for filled-amount
+        //       'field-cash-amount' => "0.000999788700000000", // they have fixed it for filled-cash-amount
+        //              'field-fees' => "0.000058200000000000", // they have fixed it for filled-fees
         //             'finished-at' =>  1545831584181,
         //                    source => "spot-api",
         //                     state => "filled",
@@ -1088,35 +1090,38 @@ class cdax extends Exchange {
         $id = $this->safe_string($order, 'id');
         $side = null;
         $type = null;
-        $status = null;
-        if (is_array($order) && array_key_exists('type', $order)) {
-            $orderType = explode('-', $order['type']);
-            $side = $orderType[0];
-            $type = $orderType[1];
-            $status = $this->parse_order_status($this->safe_string($order, 'state'));
+        $status = $this->parse_order_status($this->safe_string($order, 'state'));
+        $orderType = $this->safe_string($order, 'type');
+        if ($orderType !== null) {
+            $parts = explode('-', $orderType);
+            $side = $this->safe_string($parts, 0);
+            $type = $this->safe_string($parts, 1);
         }
         $marketId = $this->safe_string($order, 'symbol');
         $market = $this->safe_market($marketId, $market);
-        $symbol = $this->safe_symbol($marketId, $market);
+        $symbol = $market['symbol'];
         $timestamp = $this->safe_integer($order, 'created-at');
         $clientOrderId = $this->safe_string($order, 'client-$order-id');
-        $amount = $this->safe_string($order, 'amount');
-        $filled = $this->safe_string_2($order, 'filled-amount', 'field-amount'); // typo in their API, $filled $amount
-        $price = $this->safe_string($order, 'price');
-        $cost = $this->safe_string_2($order, 'filled-cash-amount', 'field-cash-amount'); // same typo
-        $feeCost = $this->safe_number_2($order, 'filled-fees', 'field-fees'); // typo in their API, $filled fees
+        $filledString = $this->safe_string_2($order, 'filled-amount', 'field-amount'); // typo in their API, filled amount
+        $priceString = $this->safe_string($order, 'price');
+        $costString = $this->safe_string_2($order, 'filled-cash-amount', 'field-cash-amount'); // same typo
+        $amountString = $this->safe_string($order, 'amount');
+        if ($orderType === 'buy-market') {
+            $amountString = null;
+        }
+        $feeCostString = $this->safe_string_2($order, 'filled-fees', 'field-fees'); // typo in their API, filled fees
         $fee = null;
-        if ($feeCost !== null) {
+        if ($feeCostString !== null) {
             $feeCurrency = null;
             if ($market !== null) {
                 $feeCurrency = ($side === 'sell') ? $market['quote'] : $market['base'];
             }
             $fee = array(
-                'cost' => $feeCost,
+                'cost' => $feeCostString,
                 'currency' => $feeCurrency,
             );
         }
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1128,12 +1133,12 @@ class cdax extends Exchange {
             'timeInForce' => null,
             'postOnly' => null,
             'side' => $side,
-            'price' => $price,
+            'price' => $priceString,
             'stopPrice' => null,
             'average' => null,
-            'cost' => $cost,
-            'amount' => $amount,
-            'filled' => $filled,
+            'cost' => $costString,
+            'amount' => $amountString,
+            'filled' => $filledString,
             'remaining' => null,
             'status' => $status,
             'fee' => $fee,
@@ -1438,14 +1443,21 @@ class cdax extends Exchange {
         if ($feeCost !== null) {
             $feeCost = abs($feeCost);
         }
+        $address = $this->safe_string($transaction, 'address');
+        $network = $this->safe_string_upper($transaction, 'chain');
         return array(
             'info' => $transaction,
             'id' => $this->safe_string($transaction, 'id'),
             'txid' => $this->safe_string($transaction, 'tx-hash'),
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'address' => $this->safe_string($transaction, 'address'),
+            'network' => $network,
+            'address' => $address,
+            'addressTo' => null,
+            'addressFrom' => null,
             'tag' => $tag,
+            'tagTo' => null,
+            'tagFrom' => null,
             'type' => $type,
             'amount' => $this->safe_number($transaction, 'amount'),
             'currency' => $code,

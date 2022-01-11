@@ -41,8 +41,8 @@ class ndax(Exchange):
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
-                'fetchOrderTrades': True,
                 'fetchOrders': True,
+                'fetchOrderTrades': True,
                 'fetchTicker': True,
                 'fetchTrades': True,
                 'fetchWithdrawals': True,
@@ -200,7 +200,7 @@ class ndax(Exchange):
                 # these credentials are required for signIn() and withdraw()
                 'login': True,
                 'password': True,
-                'twofa': True,
+                # 'twofa': True,
             },
             'precisionMode': TICK_SIZE,
             'exceptions': {
@@ -230,8 +230,8 @@ class ndax(Exchange):
 
     async def sign_in(self, params={}):
         self.check_required_credentials()
-        if self.login is None or self.password is None or self.twofa is None:
-            raise AuthenticationError(self.id + ' signIn() requires exchange.login, exchange.password and exchange.twofa credentials')
+        if self.login is None or self.password is None:
+            raise AuthenticationError(self.id + ' signIn() requires exchange.login, exchange.password')
         request = {
             'grant_type': 'client_credentials',  # the only supported value
         }
@@ -251,6 +251,8 @@ class ndax(Exchange):
             return response
         pending2faToken = self.safe_string(response, 'Pending2FaToken')
         if pending2faToken is not None:
+            if self.twofa is None:
+                raise AuthenticationError(self.id + ' signIn() requires exchange.twofa credentials')
             self.options['pending2faToken'] = pending2faToken
             request = {
                 'Code': self.oath(),
@@ -858,6 +860,23 @@ class ndax(Exchange):
             })
         return result
 
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+            'timestamp': None,
+            'datetime': None,
+        }
+        for i in range(0, len(response)):
+            balance = response[i]
+            currencyId = self.safe_string(balance, 'ProductId')
+            if currencyId in self.currencies_by_id:
+                code = self.safe_currency_code(currencyId)
+                account = self.account()
+                account['total'] = self.safe_string(balance, 'Amount')
+                account['used'] = self.safe_string(balance, 'Hold')
+                result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         omsId = self.safe_integer(self.options, 'omsId', 1)
         await self.load_markets()
@@ -901,20 +920,7 @@ class ndax(Exchange):
         #         },
         #     ]
         #
-        result = {
-            'info': response,
-            'timestamp': None,
-            'datetime': None,
-        }
-        for i in range(0, len(response)):
-            balance = response[i]
-            currencyId = self.safe_string(balance, 'ProductId')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['total'] = self.safe_string(balance, 'Amount')
-            account['used'] = self.safe_string(balance, 'Hold')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def parse_ledger_entry_type(self, type):
         types = {
@@ -1118,19 +1124,13 @@ class ndax(Exchange):
         side = self.safe_string_lower(order, 'Side')
         type = self.safe_string_lower(order, 'OrderType')
         clientOrderId = self.safe_string_2(order, 'ReplacementClOrdId', 'ClientOrderId')
-        price = self.safe_number(order, 'Price', 0.0)
-        price = price if (price > 0.0) else None
-        amount = self.safe_number(order, 'OrigQuantity')
-        filled = self.safe_number(order, 'QuantityExecuted')
-        cost = self.safe_number(order, 'GrossValueExecuted')
-        average = self.safe_number(order, 'AvgPrice', 0.0)
-        average = average if (average > 0) else None
-        stopPrice = self.safe_number(order, 'StopPrice', 0.0)
-        stopPrice = stopPrice if (stopPrice > 0.0) else None
-        timeInForce = None
+        price = self.safe_string(order, 'Price')
+        amount = self.safe_string(order, 'OrigQuantity')
+        filled = self.safe_string(order, 'QuantityExecuted')
+        cost = self.safe_string(order, 'GrossValueExecuted')
+        average = self.safe_string(order, 'AvgPrice')
+        stopPrice = self.parse_number(self.omit_zero(self.safe_string(order, 'StopPrice')))
         status = self.parse_order_status(self.safe_string(order, 'OrderState'))
-        fee = None
-        trades = None
         return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1141,7 +1141,7 @@ class ndax(Exchange):
             'status': status,
             'symbol': symbol,
             'type': type,
-            'timeInForce': timeInForce,
+            'timeInForce': None,
             'postOnly': None,
             'side': side,
             'price': price,
@@ -1151,9 +1151,9 @@ class ndax(Exchange):
             'filled': filled,
             'average': average,
             'remaining': None,
-            'fee': fee,
-            'trades': trades,
-        })
+            'fee': None,
+            'trades': None,
+        }, market)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         omsId = self.safe_integer(self.options, 'omsId', 1)
@@ -1946,6 +1946,8 @@ class ndax(Exchange):
         sessionToken = self.safe_string(self.options, 'sessionToken')
         if sessionToken is None:
             raise AuthenticationError(self.id + ' call signIn() method to obtain a session token')
+        if self.twofa is None:
+            raise AuthenticationError(self.id + ' withdraw() requires exchange.twofa credentials')
         self.check_address(address)
         omsId = self.safe_integer(self.options, 'omsId', 1)
         await self.load_markets()

@@ -284,31 +284,45 @@ class bitvavo extends Exchange {
             $quoteId = $this->safe_string($market, 'quote');
             $base = $this->safe_currency_code($baseId);
             $quote = $this->safe_currency_code($quoteId);
-            $symbol = $base . '/' . $quote;
             $status = $this->safe_string($market, 'status');
-            $active = ($status === 'trading');
             $baseCurrency = $this->safe_value($currenciesById, $baseId);
             $amountPrecision = null;
             if ($baseCurrency !== null) {
                 $amountPrecision = $this->safe_integer($baseCurrency, 'decimals', 8);
             }
-            $precision = array(
-                'price' => $this->safe_integer($market, 'pricePrecision'),
-                'amount' => $amountPrecision,
-            );
             $result[] = array(
                 'id' => $id,
-                'symbol' => $symbol,
+                'symbol' => $base . '/' . $quote,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
-                'info' => $market,
+                'settleId' => null,
                 'type' => 'spot',
                 'spot' => true,
-                'active' => $active,
-                'precision' => $precision,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
+                'contractSize' => null,
+                'active' => ($status === 'trading'),
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'price' => $this->safe_integer($market, 'pricePrecision'),
+                    'amount' => $amountPrecision,
+                ),
                 'limits' => array(
+                    'leverage' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
                     'amount' => array(
                         'min' => $this->safe_number($market, 'minOrderInBaseAsset'),
                         'max' => null,
@@ -322,6 +336,7 @@ class bitvavo extends Exchange {
                         'max' => null,
                     ),
                 ),
+                'info' => $market,
             );
         }
         return $result;
@@ -381,6 +396,8 @@ class bitvavo extends Exchange {
                 'code' => $code,
                 'name' => $name,
                 'active' => $active,
+                'deposit' => $deposit,
+                'withdraw' => $withdrawal,
                 'fee' => $this->safe_number($currency, 'withdrawalFee'),
                 'precision' => $precision,
                 'limits' => array(
@@ -712,18 +729,7 @@ class bitvavo extends Exchange {
         return $this->parse_ohlcvs($response, $market, $timeframe, $since, $limit);
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privateGetBalance ($params);
-        //
-        //     array(
-        //         {
-        //             "symbol" => "BTC",
-        //             "available" => "1.57593193",
-        //             "inOrder" => "0.74832374"
-        //         }
-        //     )
-        //
+    public function parse_balance($response) {
         $result = array(
             'info' => $response,
             'timestamp' => null,
@@ -738,7 +744,22 @@ class bitvavo extends Exchange {
             $account['used'] = $this->safe_string($balance, 'inOrder');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privateGetBalance ($params);
+        //
+        //     array(
+        //         {
+        //             "symbol" => "BTC",
+        //             "available" => "1.57593193",
+        //             "inOrder" => "0.74832374"
+        //         }
+        //     )
+        //
+        return $this->parse_balance($response);
     }
 
     public function fetch_deposit_address($code, $params = array ()) {
@@ -1175,7 +1196,7 @@ class bitvavo extends Exchange {
         $postOnly = $this->safe_value($order, 'postOnly');
         // https://github.com/ccxt/ccxt/issues/8489
         $stopPrice = $this->safe_number($order, 'triggerPrice');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,

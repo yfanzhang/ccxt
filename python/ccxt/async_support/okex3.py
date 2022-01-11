@@ -52,7 +52,7 @@ class okex3(Exchange):
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchClosedOrders': True,
-                'fetchCurrencies': None,  # see below
+                'fetchCurrencies': True,  # see below
                 'fetchDepositAddress': True,
                 'fetchDeposits': True,
                 'fetchLedger': True,
@@ -70,7 +70,7 @@ class okex3(Exchange):
                 'fetchTrades': True,
                 'fetchTransactions': None,
                 'fetchWithdrawals': True,
-                'futures': True,
+                'future': True,
                 'withdraw': True,
             },
             'timeframes': {
@@ -715,6 +715,7 @@ class okex3(Exchange):
                     'rate': 'public',
                     '{instrument_id}/constituents': 'public',
                 },
+                'warnOnFetchCurrenciesWithoutAuthorization': False,
             },
             'commonCurrencies': {
                 # OKEX refers to ERC20 version of Aeternity(AEToken)
@@ -993,52 +994,56 @@ class okex3(Exchange):
             raise NotSupported(self.id + ' fetchMarketsByType does not support market type ' + type)
 
     async def fetch_currencies(self, params={}):
-        # has['fetchCurrencies'] is currently set to False
         # despite that their docs say these endpoints are public:
         #     https://www.okex.com/api/account/v3/withdrawal/fee
         #     https://www.okex.com/api/account/v3/currencies
         # it will still reply with {"code":30001, "message": "OK-ACCESS-KEY header is required"}
         # if you attempt to access it without authentication
-        response = await self.accountGetCurrencies(params)
-        #
-        #     [
-        #         {
-        #             name: '',
-        #             currency: 'BTC',
-        #             can_withdraw: '1',
-        #             can_deposit: '1',
-        #             min_withdrawal: '0.0100000000000000'
-        #         },
-        #     ]
-        #
-        result = {}
-        for i in range(0, len(response)):
-            currency = response[i]
-            id = self.safe_string(currency, 'currency')
-            code = self.safe_currency_code(id)
-            precision = 0.00000001  # default precision, todo: fix "magic constants"
-            name = self.safe_string(currency, 'name')
-            canDeposit = self.safe_integer(currency, 'can_deposit')
-            canWithdraw = self.safe_integer(currency, 'can_withdraw')
-            active = True if (canDeposit and canWithdraw) else False
-            result[code] = {
-                'id': id,
-                'code': code,
-                'info': currency,
-                'type': None,
-                'name': name,
-                'active': active,
-                'fee': None,  # todo: redesign
-                'precision': precision,
-                'limits': {
-                    'amount': {'min': None, 'max': None},
-                    'withdraw': {
-                        'min': self.safe_number(currency, 'min_withdrawal'),
-                        'max': None,
+        if not self.check_required_credentials(False):
+            if self.options['warnOnFetchCurrenciesWithoutAuthorization']:
+                raise ExchangeError(self.id + ' fetchCurrencies() is a private API endpoint that requires authentication with API keys. Set the API keys on the exchange instance or exchange.options["warnOnFetchCurrenciesWithoutAuthorization"] = False to suppress self warning message.')
+            return None
+        else:
+            response = await self.accountGetCurrencies(params)
+            #
+            #     [
+            #         {
+            #             name: '',
+            #             currency: 'BTC',
+            #             can_withdraw: '1',
+            #             can_deposit: '1',
+            #             min_withdrawal: '0.0100000000000000'
+            #         },
+            #     ]
+            #
+            result = {}
+            for i in range(0, len(response)):
+                currency = response[i]
+                id = self.safe_string(currency, 'currency')
+                code = self.safe_currency_code(id)
+                precision = 0.00000001  # default precision, todo: fix "magic constants"
+                name = self.safe_string(currency, 'name')
+                canDeposit = self.safe_integer(currency, 'can_deposit')
+                canWithdraw = self.safe_integer(currency, 'can_withdraw')
+                active = True if (canDeposit and canWithdraw) else False
+                result[code] = {
+                    'id': id,
+                    'code': code,
+                    'info': currency,
+                    'type': None,
+                    'name': name,
+                    'active': active,
+                    'fee': None,  # todo: redesign
+                    'precision': precision,
+                    'limits': {
+                        'amount': {'min': None, 'max': None},
+                        'withdraw': {
+                            'min': self.safe_number(currency, 'min_withdrawal'),
+                            'max': None,
+                        },
                     },
-                },
-            }
-        return result
+                }
+            return result
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -1539,7 +1544,7 @@ class okex3(Exchange):
             account['used'] = self.safe_string(balance, 'hold')
             account['free'] = self.safe_string(balance, 'available')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def parse_margin_balance(self, response):
         #
@@ -1614,7 +1619,7 @@ class okex3(Exchange):
                     accounts[code] = account
                 else:
                     raise NotSupported(self.id + ' margin balance response format has changed!')
-            result[symbol] = self.parse_balance(accounts)
+            result[symbol] = self.safe_balance(accounts)
         return result
 
     def parse_futures_balance(self, response):
@@ -1686,7 +1691,7 @@ class okex3(Exchange):
             # it may be incorrect to use total, free and used for swap accounts
             account['total'] = self.safe_string(balance, 'equity')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     def parse_swap_balance(self, response):
         #
@@ -1727,7 +1732,7 @@ class okex3(Exchange):
             result[symbol] = account
         result['timestamp'] = timestamp
         result['datetime'] = self.iso8601(timestamp)
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def fetch_balance(self, params={}):
         defaultType = self.safe_string_2(self.options, 'fetchBalance', 'defaultType')
@@ -2142,7 +2147,7 @@ class okex3(Exchange):
         if (clientOrderId is not None) and (len(clientOrderId) < 1):
             clientOrderId = None  # fix empty clientOrderId string
         stopPrice = self.safe_number(order, 'trigger_price')
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -2594,6 +2599,7 @@ class okex3(Exchange):
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': None,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': address,

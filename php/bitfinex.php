@@ -27,7 +27,6 @@ class bitfinex extends Exchange {
                 'CORS' => null,
                 'createDepositAddress' => true,
                 'createOrder' => true,
-                'deposit' => true,
                 'editOrder' => true,
                 'fetchBalance' => true,
                 'fetchClosedOrders' => true,
@@ -42,6 +41,7 @@ class bitfinex extends Exchange {
                 'fetchOpenOrders' => true,
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
+                'fetchPositions' => true,
                 'fetchPremiumIndexOHLCV' => false,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
@@ -172,32 +172,32 @@ class bitfinex extends Exchange {
                     'maker' => $this->parse_number('0.001'),
                     'taker' => $this->parse_number('0.002'),
                     'tiers' => array(
-                        'taker' => [
-                            [$this->parse_number('0'), $this->parse_number('0.002')],
-                            [$this->parse_number('500000'), $this->parse_number('0.002')],
-                            [$this->parse_number('1000000'), $this->parse_number('0.002')],
-                            [$this->parse_number('2500000'), $this->parse_number('0.002')],
-                            [$this->parse_number('5000000'), $this->parse_number('0.002')],
-                            [$this->parse_number('7500000'), $this->parse_number('0.002')],
-                            [$this->parse_number('10000000'), $this->parse_number('0.0018')],
-                            [$this->parse_number('15000000'), $this->parse_number('0.0016')],
-                            [$this->parse_number('20000000'), $this->parse_number('0.0014')],
-                            [$this->parse_number('25000000'), $this->parse_number('0.0012')],
-                            [$this->parse_number('30000000'), $this->parse_number('0.001')],
-                        ],
-                        'maker' => [
-                            [$this->parse_number('0'), $this->parse_number('0.001')],
-                            [$this->parse_number('500000'), $this->parse_number('0.0008')],
-                            [$this->parse_number('1000000'), $this->parse_number('0.0006')],
-                            [$this->parse_number('2500000'), $this->parse_number('0.0004')],
-                            [$this->parse_number('5000000'), $this->parse_number('0.0002')],
-                            [$this->parse_number('7500000'), $this->parse_number('0')],
-                            [$this->parse_number('10000000'), $this->parse_number('0')],
-                            [$this->parse_number('15000000'), $this->parse_number('0')],
-                            [$this->parse_number('20000000'), $this->parse_number('0')],
-                            [$this->parse_number('25000000'), $this->parse_number('0')],
-                            [$this->parse_number('30000000'), $this->parse_number('0')],
-                        ],
+                        'taker' => array(
+                            array( $this->parse_number('0'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('500000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('1000000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('2500000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('5000000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('7500000'), $this->parse_number('0.002') ),
+                            array( $this->parse_number('10000000'), $this->parse_number('0.0018') ),
+                            array( $this->parse_number('15000000'), $this->parse_number('0.0016') ),
+                            array( $this->parse_number('20000000'), $this->parse_number('0.0014') ),
+                            array( $this->parse_number('25000000'), $this->parse_number('0.0012') ),
+                            array( $this->parse_number('30000000'), $this->parse_number('0.001') ),
+                        ),
+                        'maker' => array(
+                            array( $this->parse_number('0'), $this->parse_number('0.001') ),
+                            array( $this->parse_number('500000'), $this->parse_number('0.0008') ),
+                            array( $this->parse_number('1000000'), $this->parse_number('0.0006') ),
+                            array( $this->parse_number('2500000'), $this->parse_number('0.0004') ),
+                            array( $this->parse_number('5000000'), $this->parse_number('0.0002') ),
+                            array( $this->parse_number('7500000'), $this->parse_number('0') ),
+                            array( $this->parse_number('10000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('15000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('20000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('25000000'), $this->parse_number('0') ),
+                            array( $this->parse_number('30000000'), $this->parse_number('0') ),
+                        ),
                     ),
                 ),
                 'funding' => array(
@@ -572,7 +572,7 @@ class bitfinex extends Exchange {
                 }
             }
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function transfer($code, $amount, $fromAccount, $toAccount, $params = array ()) {
@@ -945,7 +945,7 @@ class bitfinex extends Exchange {
         }
         $timestamp = $this->safe_timestamp($order, 'timestamp');
         $id = $this->safe_string($order, 'id');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -1185,14 +1185,20 @@ class bitfinex extends Exchange {
         if ($feeCost !== null) {
             $feeCost = abs($feeCost);
         }
+        $tag = $this->safe_string($transaction, 'description');
         return array(
             'info' => $transaction,
             'id' => $this->safe_string($transaction, 'id'),
             'txid' => $this->safe_string($transaction, 'txid'),
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'address' => $this->safe_string($transaction, 'address'), // todo => this is actually the tag for XRP transfers (the address is missing)
-            'tag' => null, // refix it properly for the tag from description
+            'network' => null,
+            'address' => $this->safe_string($transaction, 'address'), // todo => this is actually the $tag for XRP transfers (the address is missing)
+            'addressTo' => null,
+            'addressFrom' => null,
+            'tag' => $tag,
+            'tagTo' => null,
+            'tagFrom' => null,
             'type' => $type,
             'amount' => $this->safe_number($transaction, 'amount'),
             'currency' => $code,

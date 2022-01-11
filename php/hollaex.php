@@ -580,21 +580,7 @@ class hollaex extends Exchange {
         );
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privateGetUserBalance ($params);
-        //
-        //     {
-        //         "updated_at" => "2020-03-02T22:27:38.428Z",
-        //         "btc_balance" => 0,
-        //         "btc_pending" => 0,
-        //         "btc_available" => 0,
-        //         "eth_balance" => 0,
-        //         "eth_pending" => 0,
-        //         "eth_available" => 0,
-        //         // ...
-        //     }
-        //
+    public function parse_balance($response) {
         $timestamp = $this->parse8601($this->safe_string($response, 'updated_at'));
         $result = array(
             'info' => $response,
@@ -610,7 +596,25 @@ class hollaex extends Exchange {
             $account['total'] = $this->safe_string($response, $currencyId . '_balance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetUserBalance ($params);
+        //
+        //     {
+        //         "updated_at" => "2020-03-02T22:27:38.428Z",
+        //         "btc_balance" => 0,
+        //         "btc_pending" => 0,
+        //         "btc_available" => 0,
+        //         "eth_balance" => 0,
+        //         "eth_pending" => 0,
+        //         "eth_available" => 0,
+        //         // ...
+        //     }
+        //
+        return $this->parse_balance($response);
     }
 
     public function fetch_open_order($id, $symbol = null, $params = array ()) {
@@ -813,7 +817,7 @@ class hollaex extends Exchange {
         $amount = $this->safe_string($order, 'size');
         $filled = $this->safe_string($order, 'filled');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => null,
             'timestamp' => $timestamp,
@@ -1223,6 +1227,7 @@ class hollaex extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'addressFrom' => $addressFrom,
             'address' => $address,
             'addressTo' => $addressTo,

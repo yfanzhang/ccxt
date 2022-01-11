@@ -26,7 +26,6 @@ class coinone extends Exchange {
                 'createOrder' => true,
                 'fetchBalance' => true,
                 'fetchClosedOrders' => null, // the endpoint that should return closed orders actually returns trades, https://github.com/ccxt/ccxt/pull/7067
-                'fetchCurrencies' => null,
                 'fetchDepositAddresses' => true,
                 'fetchMarkets' => true,
                 'fetchMyTrades' => true,
@@ -136,9 +135,7 @@ class coinone extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privatePostAccountBalance ($params);
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         $balances = $this->omit($response, array(
             'errorCode',
@@ -155,7 +152,13 @@ class coinone extends Exchange {
             $account['total'] = $this->safe_string($balance, 'balance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privatePostAccountBalance ($params);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -278,27 +281,24 @@ class coinone extends Exchange {
         }
         $priceString = $this->safe_string($trade, 'price');
         $amountString = $this->safe_string($trade, 'qty');
-        $price = $this->parse_number($priceString);
-        $amount = $this->parse_number($amountString);
-        $cost = $this->parse_number(Precise::string_mul($priceString, $amountString));
         $orderId = $this->safe_string($trade, 'orderId');
-        $feeCost = $this->safe_number($trade, 'fee');
+        $feeCostString = $this->safe_string($trade, 'fee');
         $fee = null;
-        if ($feeCost !== null) {
-            $feeCost = abs($feeCost);
-            $feeRate = $this->safe_number($trade, 'feeRate');
-            $feeRate = abs($feeRate);
+        if ($feeCostString !== null) {
+            $feeCostString = Precise::string_abs($feeCostString);
+            $feeRateString = $this->safe_string($trade, 'feeRate');
+            $feeRateString = Precise::string_abs($feeRateString);
             $feeCurrencyCode = null;
             if ($market !== null) {
                 $feeCurrencyCode = ($side === 'sell') ? $market['quote'] : $market['base'];
             }
             $fee = array(
-                'cost' => $feeCost,
+                'cost' => $feeCostString,
                 'currency' => $feeCurrencyCode,
-                'rate' => $feeRate,
+                'rate' => $feeRateString,
             );
         }
-        return array(
+        return $this->safe_trade(array(
             'id' => $this->safe_string($trade, 'id'),
             'info' => $trade,
             'timestamp' => $timestamp,
@@ -308,11 +308,11 @@ class coinone extends Exchange {
             'type' => null,
             'side' => $side,
             'takerOrMaker' => null,
-            'price' => $price,
-            'amount' => $amount,
-            'cost' => $cost,
+            'price' => $priceString,
+            'amount' => $amountString,
+            'cost' => null,
             'fee' => $fee,
-        );
+        ), $market);
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
@@ -446,7 +446,7 @@ class coinone extends Exchange {
         //     }
         //
         $id = $this->safe_string($order, 'orderId');
-        $price = $this->safe_string($order, 'price');
+        $priceString = $this->safe_string($order, 'price');
         $timestamp = $this->safe_timestamp($order, 'timestamp');
         $side = $this->safe_string($order, 'type');
         if ($side === 'ask') {
@@ -454,13 +454,13 @@ class coinone extends Exchange {
         } else if ($side === 'bid') {
             $side = 'buy';
         }
-        $remaining = $this->safe_string($order, 'remainQty');
-        $amount = $this->safe_string($order, 'qty');
+        $remainingString = $this->safe_string($order, 'remainQty');
+        $amountString = $this->safe_string($order, 'qty');
         $status = $this->safe_string($order, 'status');
         // https://github.com/ccxt/ccxt/pull/7067
         if ($status === 'live') {
-            if (($remaining !== null) && ($amount !== null)) {
-                $isLessThan = Precise::string_lt($remaining, $amount);
+            if (($remainingString !== null) && ($amountString !== null)) {
+                $isLessThan = Precise::string_lt($remainingString, $amountString);
                 if ($isLessThan) {
                     $status = 'canceled';
                 }
@@ -486,16 +486,16 @@ class coinone extends Exchange {
             $quote = $market['quote'];
         }
         $fee = null;
-        $feeCost = $this->safe_number($order, 'fee');
-        if ($feeCost !== null) {
+        $feeCostString = $this->safe_string($order, 'fee');
+        if ($feeCostString !== null) {
             $feeCurrencyCode = ($side === 'sell') ? $quote : $base;
             $fee = array(
-                'cost' => $feeCost,
-                'rate' => $this->safe_number($order, 'feeRate'),
+                'cost' => $feeCostString,
+                'rate' => $this->safe_string($order, 'feeRate'),
                 'currency' => $feeCurrencyCode,
             );
         }
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -507,13 +507,13 @@ class coinone extends Exchange {
             'timeInForce' => null,
             'postOnly' => null,
             'side' => $side,
-            'price' => $price,
+            'price' => $priceString,
             'stopPrice' => null,
             'cost' => null,
             'average' => null,
-            'amount' => $amount,
+            'amount' => $amountString,
             'filled' => null,
-            'remaining' => $remaining,
+            'remaining' => $remainingString,
             'status' => $status,
             'fee' => $fee,
             'trades' => null,

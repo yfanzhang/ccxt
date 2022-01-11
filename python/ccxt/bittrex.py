@@ -43,6 +43,9 @@ class bittrex(Exchange):
             'pro': True,
             # new metainfo interface
             'has': {
+                'margin': False,
+                'swap': False,
+                'future': False,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'CORS': None,
@@ -51,6 +54,7 @@ class bittrex(Exchange):
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchBorrowRate': False,
+                'fetchBorrowRateHistory': False,
                 'fetchBorrowRates': False,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
@@ -242,6 +246,7 @@ class bittrex(Exchange):
             },
             'commonCurrencies': {
                 'BIFI': 'Bifrost Finance',
+                'MEME': 'Memetic',  # conflict with Meme Inu
                 'MER': 'Mercury',  # conflict with Mercurial Finance
                 'PROS': 'Pros.Finance',
                 'REPV2': 'REP',
@@ -328,11 +333,9 @@ class bittrex(Exchange):
             })
         return result
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        balances = self.privateGetBalances(params)
-        result = {'info': balances}
-        indexed = self.index_by(balances, 'currencySymbol')
+    def parse_balance(self, response):
+        result = {'info': response}
+        indexed = self.index_by(response, 'currencySymbol')
         currencyIds = list(indexed.keys())
         for i in range(0, len(currencyIds)):
             currencyId = currencyIds[i]
@@ -342,7 +345,12 @@ class bittrex(Exchange):
             account['free'] = self.safe_string(balance, 'available')
             account['total'] = self.safe_string(balance, 'total')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privateGetBalances(params)
+        return self.parse_balance(response)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -408,6 +416,8 @@ class bittrex(Exchange):
                 'type': self.safe_string(currency, 'coinType'),
                 'name': self.safe_string(currency, 'name'),
                 'active': (isActive == 'ONLINE'),
+                'deposit': None,
+                'withdraw': None,
                 'fee': fee,
                 'precision': precision,
                 'limits': {
@@ -942,8 +952,13 @@ class bittrex(Exchange):
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': None,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': None,
+            'tagTo': None,
+            'tagFrom': None,
             'status': status,
             'type': type,
             'updated': updated,
@@ -1009,7 +1024,7 @@ class bittrex(Exchange):
         status = self.safe_string_lower(order, 'status')
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'timeInForce'))
         postOnly = (timeInForce == 'PO')
-        return self.safe_order2({
+        return self.safe_order({
             'id': self.safe_string(order, 'id'),
             'clientOrderId': clientOrderId,
             'timestamp': timestamp,

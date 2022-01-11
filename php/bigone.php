@@ -639,6 +639,25 @@ class bigone extends Exchange {
         return $this->parse_ohlcvs($data, $market, $timeframe, $since, $limit);
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        $balances = $this->safe_value($response, 'data', array());
+        for ($i = 0; $i < count($balances); $i++) {
+            $balance = $balances[$i];
+            $symbol = $this->safe_string($balance, 'asset_symbol');
+            $code = $this->safe_currency_code($symbol);
+            $account = $this->account();
+            $account['total'] = $this->safe_string($balance, 'balance');
+            $account['used'] = $this->safe_string($balance, 'locked_balance');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $this->load_markets();
         $type = $this->safe_string($params, 'type', '');
@@ -655,22 +674,7 @@ class bigone extends Exchange {
         //         ),
         //     }
         //
-        $result = array(
-            'info' => $response,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        $balances = $this->safe_value($response, 'data', array());
-        for ($i = 0; $i < count($balances); $i++) {
-            $balance = $balances[$i];
-            $symbol = $this->safe_string($balance, 'asset_symbol');
-            $code = $this->safe_currency_code($symbol);
-            $account = $this->account();
-            $account['total'] = $this->safe_string($balance, 'balance');
-            $account['used'] = $this->safe_string($balance, 'locked_balance');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function parse_order($order, $market = null) {
@@ -704,7 +708,7 @@ class bigone extends Exchange {
             $side = 'sell';
         }
         $lastTradeTimestamp = $this->parse8601($this->safe_string($order, 'updated_at'));
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,
@@ -1106,6 +1110,7 @@ class bigone extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'addressFrom' => null,
             'address' => null,
             'addressTo' => $address,

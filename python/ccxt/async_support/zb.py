@@ -167,7 +167,7 @@ class zb(Exchange):
             'api': {
                 'trade': {
                     'get': [
-                        'getFeeInfo',
+                        'getFeeInfo',  # withdrawal fees
                     ],
                 },
                 'public': {
@@ -276,22 +276,39 @@ class zb(Exchange):
             amountPrecisionString = self.safe_string(market, 'amountScale')
             pricePrecisionString = self.safe_string(market, 'priceScale')
             priceLimit = self.parse_precision(pricePrecisionString)
-            precision = {
-                'amount': int(amountPrecisionString),
-                'price': int(pricePrecisionString),
-            }
             result.append({
                 'id': id,
                 'symbol': symbol,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'type': 'spot',
                 'spot': True,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'contract': False,
+                'linear': None,
+                'inverse': None,
+                'contractSize': None,
                 'active': True,
-                'precision': precision,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'amount': int(amountPrecisionString),
+                    'price': int(pricePrecisionString),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': None,
+                        'max': None,
+                    },
                     'amount': {
                         'min': self.safe_number(market, 'minAmount'),
                         'max': None,
@@ -377,11 +394,7 @@ class zb(Exchange):
             }
         return result
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privateGetGetAccountInfo(params)
-        # todo: use self somehow
-        # permissions = response['result']['base']
+    def parse_balance(self, response):
         balances = self.safe_value(response['result'], 'coins')
         result = {
             'info': response,
@@ -405,7 +418,14 @@ class zb(Exchange):
             account['free'] = self.safe_string(balance, 'available')
             account['used'] = self.safe_string(balance, 'freez')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privateGetGetAccountInfo(params)
+        # todo: use self somehow
+        # permissions = response['result']['base']
+        return self.parse_balance(response)
 
     def parse_deposit_address(self, depositAddress, currency=None):
         #
@@ -850,7 +870,7 @@ class zb(Exchange):
                 'cost': feeCost,
                 'currency': feeCurrency,
             }
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -962,6 +982,7 @@ class zb(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'addressFrom': None,
             'address': address,
             'addressTo': address,

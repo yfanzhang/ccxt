@@ -58,8 +58,6 @@ class bw(Exchange):
                 'fetchTradingLimits': None,
                 'fetchTransactions': None,
                 'fetchWithdrawals': True,
-                'privateAPI': None,
-                'publicAPI': None,
                 'withdraw': None,
             },
             'timeframes': {
@@ -579,6 +577,20 @@ class bw(Exchange):
         data = self.safe_value(response, 'datas', [])
         return self.parse_ohlcvs(data, market, timeframe, since, limit)
 
+    def parse_balance(self, response):
+        data = self.safe_value(response, 'datas', {})
+        balances = self.safe_value(data, 'list', [])
+        result = {'info': response}
+        for i in range(0, len(balances)):
+            balance = balances[i]
+            currencyId = self.safe_string(balance, 'currencyTypeId')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'amount')
+            account['used'] = self.safe_string(balance, 'freeze')
+            result[code] = account
+        return self.safe_balance(result)
+
     def fetch_balance(self, params={}):
         self.load_markets()
         response = self.privatePostExchangeFundControllerWebsiteFundcontrollerFindbypage(params)
@@ -599,18 +611,7 @@ class bw(Exchange):
         #         "resMsg": {"code": "1", "message": "success !"}
         #     }
         #
-        data = self.safe_value(response, 'datas', {})
-        balances = self.safe_value(data, 'list', [])
-        result = {'info': response}
-        for i in range(0, len(balances)):
-            balance = balances[i]
-            currencyId = self.safe_string(balance, 'currencyTypeId')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'amount')
-            account['used'] = self.safe_string(balance, 'freeze')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
         if price is None:
@@ -707,7 +708,7 @@ class bw(Exchange):
         remaining = self.safe_string_2(order, 'availabelAmount', 'availableAmount')  # typo in the docs or in the API, availabel vs available
         cost = self.safe_string(order, 'totalMoney')
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': self.safe_string(order, 'entrustId'),
             'clientOrderId': None,
@@ -1015,6 +1016,7 @@ class bw(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'addressFrom': None,
             'address': address,
             'addressTo': None,

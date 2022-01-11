@@ -267,9 +267,7 @@ class btcalpha(Exchange):
         #
         return self.parse_ohlcvs(response, market, timeframe, since, limit)
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.privateGetWallets(params)
+    def parse_balance(self, response):
         result = {'info': response}
         for i in range(0, len(response)):
             balance = response[i]
@@ -279,7 +277,12 @@ class btcalpha(Exchange):
             account['used'] = self.safe_string(balance, 'reserve')
             account['total'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privateGetWallets(params)
+        return self.parse_balance(response)
 
     def parse_order_status(self, status):
         statuses = {
@@ -335,7 +338,7 @@ class btcalpha(Exchange):
         id = self.safe_string_2(order, 'oid', 'id')
         trades = self.safe_value(order, 'trades')
         side = self.safe_string_2(order, 'my_side', 'type')
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'datetime': self.iso8601(timestamp),

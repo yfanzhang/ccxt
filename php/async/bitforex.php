@@ -245,9 +245,7 @@ class bitforex extends Exchange {
         return $this->parse_trades($response['data'], $market, $since, $limit);
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privatePostApiV1FundAllAccount ($params);
+    public function parse_balance($response) {
         $data = $response['data'];
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($data); $i++) {
@@ -260,7 +258,13 @@ class bitforex extends Exchange {
             $account['total'] = $this->safe_string($balance, 'fix');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privatePostApiV1FundAllAccount ($params);
+        return $this->parse_balance($response);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
@@ -399,7 +403,7 @@ class bitforex extends Exchange {
             'cost' => $this->safe_number($order, 'tradeFee'),
             'currency' => $feeCurrency,
         );
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,

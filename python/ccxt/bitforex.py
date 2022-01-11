@@ -251,9 +251,7 @@ class bitforex(Exchange):
         #
         return self.parse_trades(response['data'], market, since, limit)
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.privatePostApiV1FundAllAccount(params)
+    def parse_balance(self, response):
         data = response['data']
         result = {'info': response}
         for i in range(0, len(data)):
@@ -265,7 +263,12 @@ class bitforex(Exchange):
             account['free'] = self.safe_string(balance, 'active')
             account['total'] = self.safe_string(balance, 'fix')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privatePostApiV1FundAllAccount(params)
+        return self.parse_balance(response)
 
     def fetch_ticker(self, symbol, params={}):
         self.load_markets()
@@ -394,7 +397,7 @@ class bitforex(Exchange):
             'cost': self.safe_number(order, 'tradeFee'),
             'currency': feeCurrency,
         }
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,

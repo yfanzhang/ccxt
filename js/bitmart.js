@@ -147,24 +147,24 @@ module.exports = class bitmart extends Exchange {
                     'maker': this.parseNumber ('0.0025'),
                     'tiers': {
                         'taker': [
-                            [this.parseNumber ('0'), this.parseNumber ('0.0020')],
-                            [this.parseNumber ('10'), this.parseNumber ('0.18')],
-                            [this.parseNumber ('50'), this.parseNumber ('0.0016')],
-                            [this.parseNumber ('250'), this.parseNumber ('0.0014')],
-                            [this.parseNumber ('1000'), this.parseNumber ('0.0012')],
-                            [this.parseNumber ('5000'), this.parseNumber ('0.0010')],
-                            [this.parseNumber ('25000'), this.parseNumber ('0.0008')],
-                            [this.parseNumber ('50000'), this.parseNumber ('0.0006')],
+                            [ this.parseNumber ('0'), this.parseNumber ('0.0020') ],
+                            [ this.parseNumber ('10'), this.parseNumber ('0.18') ],
+                            [ this.parseNumber ('50'), this.parseNumber ('0.0016') ],
+                            [ this.parseNumber ('250'), this.parseNumber ('0.0014') ],
+                            [ this.parseNumber ('1000'), this.parseNumber ('0.0012') ],
+                            [ this.parseNumber ('5000'), this.parseNumber ('0.0010') ],
+                            [ this.parseNumber ('25000'), this.parseNumber ('0.0008') ],
+                            [ this.parseNumber ('50000'), this.parseNumber ('0.0006') ],
                         ],
                         'maker': [
-                            [this.parseNumber ('0'), this.parseNumber ('0.001')],
-                            [this.parseNumber ('10'), this.parseNumber ('0.0009')],
-                            [this.parseNumber ('50'), this.parseNumber ('0.0008')],
-                            [this.parseNumber ('250'), this.parseNumber ('0.0007')],
-                            [this.parseNumber ('1000'), this.parseNumber ('0.0006')],
-                            [this.parseNumber ('5000'), this.parseNumber ('0.0005')],
-                            [this.parseNumber ('25000'), this.parseNumber ('0.0004')],
-                            [this.parseNumber ('50000'), this.parseNumber ('0.0003')],
+                            [ this.parseNumber ('0'), this.parseNumber ('0.001') ],
+                            [ this.parseNumber ('10'), this.parseNumber ('0.0009') ],
+                            [ this.parseNumber ('50'), this.parseNumber ('0.0008') ],
+                            [ this.parseNumber ('250'), this.parseNumber ('0.0007') ],
+                            [ this.parseNumber ('1000'), this.parseNumber ('0.0006') ],
+                            [ this.parseNumber ('5000'), this.parseNumber ('0.0005') ],
+                            [ this.parseNumber ('25000'), this.parseNumber ('0.0004') ],
+                            [ this.parseNumber ('50000'), this.parseNumber ('0.0003') ],
                         ],
                     },
                 },
@@ -235,6 +235,7 @@ module.exports = class bitmart extends Exchange {
                     '50022': ExchangeNotAvailable, // 400, Service unavailable
                     '50023': BadSymbol, // 400, This Symbol can't place order by api
                     '50029': InvalidOrder, // {"message":"param not match : size * price >=1000","code":50029,"trace":"f931f030-b692-401b-a0c5-65edbeadc598","data":{}}
+                    '50030': InvalidOrder, // {"message":"Order is already canceled","code":50030,"trace":"8d6f64ee-ad26-45a4-9efd-1080f9fca1fa","data":{}}
                     '53000': AccountSuspended, // 403, Your account is frozen due to security policies. Please contact customer service
                     '53001': AccountSuspended, // {"message":"Your kyc country is restricted. Please contact customer service.","code":53001,"trace":"8b445940-c123-4de9-86d7-73c5be2e7a24","data":{}}
                     '57001': BadRequest, // 405, Method Not Allowed
@@ -282,6 +283,8 @@ module.exports = class bitmart extends Exchange {
             'commonCurrencies': {
                 'COT': 'Community Coin',
                 'CPC': 'CPCoin',
+                'DMS': 'DimSum', // conflict with Dragon Mainland Shards
+                'FOX': 'Fox Finance',
                 'GDT': 'Gorilla Diamond',
                 '$HERO': 'Step Hero',
                 '$PAC': 'PAC',
@@ -290,6 +293,7 @@ module.exports = class bitmart extends Exchange {
                 'ONE': 'Menlo One',
                 'PLA': 'Plair',
                 'TCT': 'TacoCat Token',
+                'TRU': 'Truebit', // conflict with TrueFi
             },
             'options': {
                 'networks': {
@@ -431,43 +435,57 @@ module.exports = class bitmart extends Exchange {
             // the docs are wrong: https://github.com/ccxt/ccxt/issues/5612
             //
             const pricePrecision = this.safeInteger (market, 'price_max_precision');
-            const precision = {
-                'amount': this.safeNumber (market, 'base_min_size'),
-                'price': this.parseNumber (this.decimalToPrecision (Math.pow (10, -pricePrecision), ROUND, 12)),
-            };
             const minBuyCost = this.safeNumber (market, 'min_buy_amount');
             const minSellCost = this.safeNumber (market, 'min_sell_amount');
             const minCost = Math.max (minBuyCost, minSellCost);
-            const limits = {
-                'amount': {
-                    'min': this.safeNumber (market, 'base_min_size'),
-                    'max': this.safeNumber (market, 'base_max_size'),
-                },
-                'price': {
-                    'min': undefined,
-                    'max': undefined,
-                },
-                'cost': {
-                    'min': minCost,
-                    'max': undefined,
-                },
-            };
             result.push ({
                 'id': id,
                 'numericId': numericId,
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': undefined,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': undefined,
                 'type': 'spot',
                 'spot': true,
-                'future': false,
+                'margin': false,
                 'swap': false,
-                'precision': precision,
-                'limits': limits,
-                'info': market,
+                'future': false,
+                'option': false,
+                'contract': false,
+                'linear': undefined,
+                'inverse': undefined,
+                'contractSize': undefined,
                 'active': true,
+                'expiry': undefined,
+                'expiryDatetime': undefined,
+                'strike': undefined,
+                'optionType': undefined,
+                'precision': {
+                    'amount': this.safeNumber (market, 'base_min_size'),
+                    'price': this.parseNumber (this.decimalToPrecision (Math.pow (10, -pricePrecision), ROUND, 14)),
+                },
+                'limits': {
+                    'leverage': {
+                        'min': this.parseNumber ('1'),
+                        'max': undefined,
+                    },
+                    'amount': {
+                        'min': this.safeNumber (market, 'base_min_size'),
+                        'max': this.safeNumber (market, 'base_max_size'),
+                    },
+                    'price': {
+                        'min': undefined,
+                        'max': undefined,
+                    },
+                    'cost': {
+                        'min': minCost,
+                        'max': undefined,
+                    },
+                },
+                'info': market,
             });
         }
         return result;
@@ -539,9 +557,10 @@ module.exports = class bitmart extends Exchange {
             const numericId = this.safeInteger (contract, 'contract_id');
             const baseId = this.safeString (contract, 'base_coin');
             const quoteId = this.safeString (contract, 'quote_coin');
+            const settleId = this.safeString (contract, 'price_coin');
             const base = this.safeCurrencyCode (baseId);
             const quote = this.safeCurrencyCode (quoteId);
-            const symbol = this.safeString (contract, 'name');
+            const settle = this.safeCurrencyCode (settleId);
             //
             // https://github.com/bitmartexchange/bitmart-official-api-docs/blob/master/rest/public/symbols_details.md#response-details
             // from the above API doc:
@@ -553,56 +572,72 @@ module.exports = class bitmart extends Exchange {
             //
             const amountPrecision = this.safeNumber (contract, 'vol_unit');
             const pricePrecision = this.safeNumber (contract, 'price_unit');
-            const precision = {
-                'amount': amountPrecision,
-                'price': pricePrecision,
-            };
-            const limits = {
-                'amount': {
-                    'min': this.safeNumber (contract, 'min_vol'),
-                    'max': this.safeNumber (contract, 'max_vol'),
-                },
-                'price': {
-                    'min': undefined,
-                    'max': undefined,
-                },
-                'cost': {
-                    'min': undefined,
-                    'max': undefined,
-                },
-            };
             const contractType = this.safeValue (contract, 'contract_type');
             let future = false;
             let swap = false;
             let type = 'contract';
+            let symbol = base + '/' + quote;
+            const expiry = this.parse8601 (this.safeString (contract, 'delive_at'));
             if (contractType === 1) {
                 type = 'swap';
                 swap = true;
+                symbol = symbol + ':' + settle;
             } else if (contractType === 2) {
                 type = 'future';
                 future = true;
+                symbol = symbol + ':' + settle + '-' + this.yymmdd (expiry, '');
             }
             const feeConfig = this.safeValue (market, 'fee_config', {});
-            const maker = this.safeNumber (feeConfig, 'maker_fee');
-            const taker = this.safeNumber (feeConfig, 'taker_fee');
             result.push ({
                 'id': id,
                 'numericId': numericId,
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': settle,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'maker': maker,
-                'taker': taker,
+                'settleId': settleId,
                 'type': type,
                 'spot': false,
-                'future': future,
+                'margin': false,
                 'swap': swap,
-                'precision': precision,
-                'limits': limits,
-                'info': market,
+                'future': future,
+                'option': false,
+                'contract': true,
+                'linear': undefined,
+                'inverse': undefined,
+                'taker': this.safeNumber (feeConfig, 'taker_fee'),
+                'maker': this.safeNumber (feeConfig, 'maker_fee'),
+                'contractSize': this.safeNumber (market, 'contract_size'),
                 'active': undefined,
+                'expiry': expiry,
+                'expiryDatetime': this.iso8601 (expiry),
+                'strike': undefined,
+                'optionType': undefined,
+                'precision': {
+                    'amount': amountPrecision,
+                    'price': pricePrecision,
+                },
+                'limits': {
+                    'leverage': {
+                        'min': this.safeNumber (contract, 'min_leverage'),
+                        'max': this.safeNumber (contract, 'max_leverage'),
+                    },
+                    'amount': {
+                        'min': this.safeNumber (contract, 'min_vol'),
+                        'max': this.safeNumber (contract, 'max_vol'),
+                    },
+                    'price': {
+                        'min': undefined,
+                        'max': undefined,
+                    },
+                    'cost': {
+                        'min': undefined,
+                        'max': undefined,
+                    },
+                },
+                'info': market,
             });
         }
         return result;
@@ -688,8 +723,8 @@ module.exports = class bitmart extends Exchange {
         if (percentage === undefined) {
             percentage = this.safeNumber (ticker, 'price_change_percent_24h');
         }
-        const baseVolume = this.safeNumber2 (ticker, 'base_volume_24h', 'base_coin_volume');
-        let quoteVolume = this.safeNumber2 (ticker, 'quote_volume_24h', 'quote_coin_volume');
+        const baseVolume = this.safeNumber2 (ticker, 'base_coin_volume', 'base_volume_24h');
+        let quoteVolume = this.safeNumber2 (ticker, 'quote_coin_volume', 'quote_volume_24h');
         quoteVolume = this.safeNumber (ticker, 'volume_24h', quoteVolume);
         const open = this.safeNumber2 (ticker, 'open_24h', 'open');
         let average = undefined;
@@ -848,6 +883,8 @@ module.exports = class bitmart extends Exchange {
                 'name': name,
                 'info': currency, // the original payload
                 'active': active,
+                'deposit': depositEnabled,
+                'withdraw': withdrawEnabled,
                 'fee': undefined,
                 'precision': undefined,
                 'limits': {
@@ -1184,7 +1221,7 @@ module.exports = class bitmart extends Exchange {
                 request['from'] = start;
                 request['to'] = end;
             } else {
-                const start = parseInt (since / 1000);
+                const start = parseInt (since / 1000) - 1;
                 const end = this.sum (start, limit * duration);
                 request['from'] = start;
                 request['to'] = end;
@@ -1202,7 +1239,7 @@ module.exports = class bitmart extends Exchange {
                 request['startTime'] = start;
                 request['endTime'] = end;
             } else {
-                const start = parseInt (since / 1000);
+                const start = parseInt (since / 1000) - 1;
                 const end = this.sum (start, limit * duration);
                 request['startTime'] = start;
                 request['endTime'] = end;
@@ -1405,6 +1442,23 @@ module.exports = class bitmart extends Exchange {
         return this.parseTrades (trades, market, since, limit);
     }
 
+    parseBalance (response) {
+        const data = this.safeValue (response, 'data', {});
+        const wallet = this.safeValue2 (data, 'wallet', 'accounts', []);
+        const result = { 'info': response };
+        for (let i = 0; i < wallet.length; i++) {
+            const balance = wallet[i];
+            let currencyId = this.safeString2 (balance, 'id', 'currency');
+            currencyId = this.safeString (balance, 'coin_code', currencyId);
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['free'] = this.safeString2 (balance, 'available', 'available_vol');
+            account['used'] = this.safeString2 (balance, 'frozen', 'freeze_vol');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         let method = undefined;
@@ -1475,20 +1529,7 @@ module.exports = class bitmart extends Exchange {
         //         }
         //     }
         //
-        const data = this.safeValue (response, 'data', {});
-        const wallet = this.safeValue2 (data, 'wallet', 'accounts', []);
-        const result = { 'info': response };
-        for (let i = 0; i < wallet.length; i++) {
-            const balance = wallet[i];
-            let currencyId = this.safeString2 (balance, 'id', 'currency');
-            currencyId = this.safeString (balance, 'coin_code', currencyId);
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['free'] = this.safeString2 (balance, 'available', 'available_vol');
-            account['used'] = this.safeString2 (balance, 'frozen', 'freeze_vol');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     parseOrder (order, market = undefined) {
@@ -1573,7 +1614,7 @@ module.exports = class bitmart extends Exchange {
         } else if (category === 2) {
             type = 'market';
         }
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'info': order,
@@ -1862,6 +1903,8 @@ module.exports = class bitmart extends Exchange {
                 request['status'] = 9;
             } else if (status === 'closed') {
                 request['status'] = 6;
+            } else if (status === 'canceled') {
+                request['status'] = 8;
             } else {
                 request['status'] = status;
             }
@@ -1955,6 +1998,10 @@ module.exports = class bitmart extends Exchange {
 
     async fetchClosedOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
         return await this.fetchOrdersByStatus ('closed', symbol, since, limit, params);
+    }
+
+    async fetchCanceledOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        return await this.fetchOrdersByStatus ('canceled', symbol, since, limit, params);
     }
 
     async fetchOrders (symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -2091,14 +2138,26 @@ module.exports = class bitmart extends Exchange {
         const data = this.safeValue (response, 'data', {});
         const address = this.safeString (data, 'address');
         const tag = this.safeString (data, 'address_memo');
+        const chain = this.safeString (data, 'chain');
+        let network = undefined;
+        if (chain !== undefined) {
+            const parts = chain.split ('-');
+            const networkId = this.safeString (parts, 1);
+            network = this.safeNetwork (networkId);
+        }
         this.checkAddress (address);
         return {
             'currency': code,
             'address': address,
             'tag': tag,
-            'network': undefined, // TODO: parse
+            'network': network,
             'info': response,
         };
+    }
+
+    safeNetwork (networkId) {
+        // TODO: parse
+        return networkId;
     }
 
     async withdraw (code, amount, address, tag = undefined, params = {}) {
@@ -2270,6 +2329,7 @@ module.exports = class bitmart extends Exchange {
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': undefined,
             'address': address,
             'addressFrom': undefined,
             'addressTo': undefined,

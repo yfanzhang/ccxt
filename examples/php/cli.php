@@ -20,6 +20,9 @@ if (count($argv) > 2) {
         $verbose = count(array_filter($args, function ($option) { return strstr($option, '--verbose') !== false; })) > 0;
         $args = array_filter($args, function ($option) { return strstr($option, '--verbose') === false; });
 
+        $debug = count(array_filter($args, function ($option) { return strstr($option, '--debug') !== false; })) > 0;
+        $args = array_filter($args, function ($option) { return strstr($option, '--debug') === false; });
+
         $keys_global = './keys.json';
         $keys_local = './keys.local.json';
         $keys_file = file_exists($keys_local) ? $keys_local : $keys_global;
@@ -27,12 +30,23 @@ if (count($argv) > 2) {
         $config = json_decode(file_get_contents($keys_file), true);
         $settings = array_key_exists($id, $config) ? $config[$id] : array();
         $config = array_merge($settings, array(
-            'verbose' => $verbose, // set to true for debugging
+            'verbose' => $verbose && $debug, // set to true for debugging
         ));
 
         // instantiate the exchange by id
         $exchange = '\\ccxt\\' . $id;
         $exchange = new $exchange($config);
+
+        // check auth keys in env var
+        foreach ($exchange->requiredCredentials as $credential => $is_required) {
+            if ($is_required && !$exchange->$credential ) {
+                $credential_var = strtoupper($id . '_' . $credential); // example: KRAKEN_SECRET
+                $credential_value = getenv($credential_var);
+                if ($credential_value) {
+                    $exchange->$credential = $credential_value;
+                }
+            }
+        }
 
         $args = array_map(function ($arg) {
             global $exchange;
@@ -51,6 +65,8 @@ if (count($argv) > 2) {
         }, $args);
 
         $exchange->load_markets();
+
+        $exchange->verbose = $verbose;
 
         // if (method_exists($exchange, $member)) {
 

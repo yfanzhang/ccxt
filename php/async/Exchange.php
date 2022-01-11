@@ -28,11 +28,11 @@ use Exception;
 
 include 'Throttle.php';
 
-$version = '1.62.85';
+$version = '1.67.1';
 
 class Exchange extends \ccxt\Exchange {
 
-    const VERSION = '1.62.85';
+    const VERSION = '1.67.1';
 
     public static $loop;
     public static $kernel;
@@ -122,7 +122,7 @@ class Exchange extends \ccxt\Exchange {
         $url = $this->proxy . $url;
 
         if ($this->verbose) {
-            print_r(array('Request:', $method, $url, $headers, $body));
+            print_r(array('fetch Request:', $this->id, $method, $url, 'RequestHeaders:', $headers, 'RequestBody:', $body));
         }
 
         $this->lastRestRequestTimestamp = $this->milliseconds();
@@ -161,7 +161,7 @@ class Exchange extends \ccxt\Exchange {
         }
 
         if ($this->verbose) {
-            print_r(array('Response:', $method, $url, $http_status_code, $response_headers, $response_body));
+            print_r(array('fetch Response:', $this->id, $method, $url, $http_status_code, 'ResponseHeaders:', $response_headers, 'ResponseBody:', $response_body));
         }
 
         $json_response = null;
@@ -198,7 +198,7 @@ class Exchange extends \ccxt\Exchange {
             return $this->markets;
         }
         $currencies = null;
-        if ($this->has['fetchCurrencies']) {
+        if (array_key_exists('fetchCurrencies', $this->has) && $this->has['fetchCurrencies'] === true) {
             $currencies = yield $this->fetch_currencies ();
         }
         $markets = yield $this->fetch_markets ($params);
@@ -325,5 +325,12 @@ class Exchange extends \ccxt\Exchange {
         } else {
             throw new NotSupported($this->id . ' fetchTicker not supported yet');
         }
+    }
+
+    public function load_time_difference($params = array()) {
+        $server_time = yield $this->fetch_time($params);
+        $after = $this->milliseconds();
+        $this->options['timeDifference'] = $after - $server_time;
+        return $this->options['timeDifference'];
     }
 }

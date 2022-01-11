@@ -7,6 +7,7 @@ from ccxt.async_support.base.exchange import Exchange
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.errors import PermissionDenied
+from ccxt.base.errors import AccountSuspended
 from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import BadRequest
 from ccxt.base.errors import BadSymbol
@@ -249,6 +250,7 @@ class stex(Exchange):
                     'Selected Pair is disabled': BadSymbol,  # {"success":false,"message":"Selected Pair is disabled"}
                     'Invalid scope(s) provided.': PermissionDenied,  # {"message": "Invalid scope(s) provided."}
                     'The maximum amount of open orders with the same price cannot exceed 10': InvalidOrder,  # {"success":false,"message":"The maximum amount of open orders with the same price cannot exceed 10"}
+                    'Your account not verified!': AccountSuspended,  # {"success":false,"message":"Your account not verified!","unified_message":{"message_id":"verification_required_to_continue","substitutions":null},"notice":"Please be informed that parameter `message` is deprecated and will be removed. Use unified_message instead."}
                 },
                 'broad': {
                     'Not enough': InsufficientFunds,  # {"success":false,"message":"Not enough  ETH"}
@@ -782,6 +784,22 @@ class stex(Exchange):
         trades = self.safe_value(response, 'data', [])
         return self.parse_trades(trades, market, since, limit)
 
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+            'timestamp': None,
+            'datetime': None,
+        }
+        balances = self.safe_value(response, 'data', [])
+        for i in range(0, len(balances)):
+            balance = balances[i]
+            code = self.safe_currency_code(self.safe_string(balance, 'currency_id'))
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'balance')
+            account['used'] = self.safe_string(balance, 'frozen_balance')
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         await self.load_markets()
         # await self.load_accounts()
@@ -829,20 +847,7 @@ class stex(Exchange):
         #         ]
         #     }
         #
-        result = {
-            'info': response,
-            'timestamp': None,
-            'datetime': None,
-        }
-        balances = self.safe_value(response, 'data', [])
-        for i in range(0, len(balances)):
-            balance = balances[i]
-            code = self.safe_currency_code(self.safe_string(balance, 'currency_id'))
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'balance')
-            account['used'] = self.safe_string(balance, 'frozen_balance')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def parse_order_status(self, status):
         statuses = {
@@ -1515,12 +1520,14 @@ class stex(Exchange):
                 'cost': feeCost,
                 'currency': feeCurrencyCode,
             }
+        network = self.safe_string(withdrawalAddress, 'protocol_name')
         return {
             'info': transaction,
             'id': id,
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': network,
             'addressFrom': None,
             'address': address,
             'addressTo': address,

@@ -42,6 +42,7 @@ class hitbtc3(Exchange):
                 'fetchCurrencies': True,
                 'fetchDepositAddress': True,
                 'fetchDeposits': False,
+                'fetchFundingRateHistory': True,
                 'fetchMarkets': True,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
@@ -294,98 +295,132 @@ class hitbtc3(Exchange):
         return self.milliseconds()
 
     async def fetch_markets(self, params={}):
-        request = {}
-        response = await self.publicGetPublicSymbol(self.extend(request, params))
-        #
-        # fetches both spot and future markets
+        response = await self.publicGetPublicSymbol(params)
         #
         #     {
-        #         "ETHBTC": {
-        #             "type": "spot",
-        #             "base_currency": "ETH",
-        #             "quote_currency": "BTC",
-        #             "quantity_increment": "0.001",
-        #             "tick_size": "0.000001",
-        #             "take_rate": "0.001",
-        #             "make_rate": "-0.0001",
-        #             "fee_currency": "BTC",
-        #             "margin_trading": True,
-        #             "max_initial_leverage": "10.00"
-        #         }
+        #         "AAVEUSDT_PERP":{
+        #             "type":"futures",
+        #             "expiry":null,
+        #             "underlying":"AAVE",
+        #             "base_currency":null,
+        #             "quote_currency":"USDT",
+        #             "quantity_increment":"0.01",
+        #             "tick_size":"0.001",
+        #             "take_rate":"0.0005",
+        #             "make_rate":"0.0002",
+        #             "fee_currency":"USDT",
+        #             "margin_trading":true,
+        #             "max_initial_leverage":"50.00"
+        #         },
+        #         "MANAUSDT":{
+        #             "type":"spot",
+        #             "base_currency":"MANA",
+        #             "quote_currency":"USDT",
+        #             "quantity_increment":"1",
+        #             "tick_size":"0.0000001",
+        #             "take_rate":"0.0025",
+        #             "make_rate":"0.001",
+        #             "fee_currency":"USDT",
+        #             "margin_trading":true,
+        #             "max_initial_leverage":"5.00"
+        #         },
         #     }
         #
-        marketIds = list(response.keys())
         result = []
-        for i in range(0, len(marketIds)):
-            id = marketIds[i]
-            entry = response[id]
-            type = self.safe_string(entry, 'type')
-            spot = (type == 'spot')
-            futures = (type == 'futures')
-            baseId = None
-            if spot:
-                baseId = self.safe_string(entry, 'base_currency')
-            elif futures:
-                baseId = self.safe_string(entry, 'underlying')
-            else:
-                raise ExchangeError(self.id + ' invalid market type ' + type)
-            quoteId = self.safe_string(entry, 'quote_currency')
+        ids = list(response.keys())
+        for i in range(0, len(ids)):
+            id = ids[i]
+            market = self.safe_value(response, id)
+            marketType = self.safe_string(market, 'type')
+            expiry = self.safe_integer(market, 'expiry')
+            contract = (marketType == 'futures')
+            spot = (marketType == 'spot')
+            marginTrading = self.safe_value(market, 'margin_trading', False)
+            margin = spot and marginTrading
+            future = (expiry is not None)
+            swap = (contract and not future)
+            option = False
+            baseId = self.safe_string_2(market, 'base_currency', 'underlying')
+            quoteId = self.safe_string(market, 'quote_currency')
+            feeCurrencyId = self.safe_string(market, 'fee_currency')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
+            feeCurrency = self.safe_currency_code(feeCurrencyId)
+            settleId = None
+            settle = None
             symbol = base + '/' + quote
-            minLeverage = None
-            if futures:
-                symbol = symbol + ':' + quote
-                minLeverage = self.parse_number('1')
-            maker = self.safe_number(entry, 'make_rate')
-            taker = self.safe_number(entry, 'take_rate')
-            feeCurrency = self.safe_string(entry, 'fee_currency')
-            feeSide = 'quote' if (feeCurrency == quoteId) else 'base'
-            margin = self.safe_value(entry, 'margin_trading', False)
-            priceIncrement = self.safe_number(entry, 'tick_size')
-            amountIncrement = self.safe_number(entry, 'quantity_increment')
-            maxLeverage = self.safe_number(entry, 'max_initial_leverage')
-            precision = {
-                'price': priceIncrement,
-                'amount': amountIncrement,
-            }
-            limits = {
-                'amount': {
-                    'min': None,
-                    'max': None,
-                },
-                'price': {
-                    'min': None,
-                    'max': None,
-                },
-                'cost': {
-                    'min': None,
-                    'max': None,
-                },
-                'leverage': {
-                    'min': minLeverage,
-                    'max': maxLeverage,
-                },
-            }
+            type = 'spot'
+            contractSize = None
+            linear = None
+            inverse = None
+            if contract:
+                contractSize = self.parse_number('1')
+                settleId = feeCurrencyId
+                settle = self.safe_currency_code(settleId)
+                linear = ((quote is not None) and (quote == settle))
+                inverse = not linear
+                symbol = symbol + ':' + settle
+                if future:
+                    symbol = symbol + '-' + expiry
+                    type = 'future'
+                else:
+                    type = 'swap'
+            lotString = self.safe_string(market, 'quantity_increment')
+            stepString = self.safe_string(market, 'tick_size')
+            lot = self.parse_number(lotString)
+            step = self.parse_number(stepString)
+            taker = self.safe_number(market, 'take_rate')
+            maker = self.safe_number(market, 'make_rate')
             result.append({
-                'info': entry,
-                'symbol': symbol,
                 'id': id,
+                'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': settle,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': settleId,
+                'type': type,
                 'spot': spot,
                 'margin': margin,
-                'futures': futures,
-                'type': type,
-                'feeSide': feeSide,
-                'maker': maker,
+                'swap': swap,
+                'future': future,
+                'option': option,
+                'contract': contract,
+                'linear': linear,
+                'inverse': inverse,
                 'taker': taker,
-                'precision': precision,
-                'limits': limits,
-                'expiry': None,
+                'maker': maker,
+                'contractSize': contractSize,
+                'active': True,
+                'expiry': expiry,
                 'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'feeCurrency': feeCurrency,
+                'precision': {
+                    'price': step,
+                    'amount': lot,
+                },
+                'limits': {
+                    'leverage': {
+                        'min': 1,
+                        'max': self.safe_number(market, 'max_initial_leverage', 1),
+                    },
+                    'amount': {
+                        'min': lot,
+                        'max': None,
+                    },
+                    'price': {
+                        'min': step,
+                        'max': None,
+                    },
+                    'cost': {
+                        'min': self.parse_number(Precise.string_mul(lotString, stepString)),
+                        'max': None,
+                    },
+                },
+                'info': market,
             })
         return result
 
@@ -513,6 +548,18 @@ class hitbtc3(Exchange):
             'network': None,
         }
 
+    def parse_balance(self, response):
+        result = {'info': response}
+        for i in range(0, len(response)):
+            entry = response[i]
+            currencyId = self.safe_string(entry, 'currency')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(entry, 'available')
+            account['used'] = self.safe_string(entry, 'reserved')
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         type = self.safe_string_lower(params, 'type', 'spot')
         params = self.omit(params, ['type'])
@@ -539,16 +586,7 @@ class hitbtc3(Exchange):
         #       ...
         #     ]
         #
-        result = {'info': response}
-        for i in range(0, len(response)):
-            entry = response[i]
-            currencyId = self.safe_string(entry, 'currency')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(entry, 'available')
-            account['used'] = self.safe_string(entry, 'reserved')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def fetch_ticker(self, symbol, params={}):
         response = await self.fetch_tickers([symbol], params)
@@ -869,6 +907,7 @@ class hitbtc3(Exchange):
             'txid': txhash,
             'code': code,
             'amount': amount,
+            'network': None,
             'address': address,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
@@ -915,6 +954,25 @@ class hitbtc3(Exchange):
         result = await self.fetch_order_books([symbol], limit, params)
         return result[symbol]
 
+    def parse_trading_fee(self, fee, market=None):
+        #
+        #     {
+        #         "symbol":"ARVUSDT",  # returned from fetchTradingFees only
+        #         "take_rate":"0.0009",
+        #         "make_rate":"0.0009"
+        #     }
+        #
+        taker = self.safe_number(fee, 'take_rate')
+        maker = self.safe_number(fee, 'make_rate')
+        marketId = self.safe_string(fee, 'symbol')
+        symbol = self.safe_symbol(marketId, market)
+        return {
+            'info': fee,
+            'symbol': symbol,
+            'taker': taker,
+            'maker': maker,
+        }
+
     async def fetch_trading_fee(self, symbol, params={}):
         await self.load_markets()
         market = self.market(symbol)
@@ -922,32 +980,31 @@ class hitbtc3(Exchange):
             'symbol': market['id'],
         }
         response = await self.privateGetSpotFeeSymbol(self.extend(request, params))
-        #  {"take_rate":"0.0009","make_rate":"0.0009"}
-        taker = self.safe_number(response, 'take_rate')
-        maker = self.safe_number(response, 'make_rate')
-        return {
-            'info': response,
-            'symbol': symbol,
-            'taker': taker,
-            'maker': maker,
-        }
+        #
+        #     {
+        #         "take_rate":"0.0009",
+        #         "make_rate":"0.0009"
+        #     }
+        #
+        return self.parse_trading_fee(response, market)
 
     async def fetch_trading_fees(self, symbols=None, params={}):
         await self.load_markets()
         response = await self.privateGetSpotFee(params)
-        # [{"symbol":"ARVUSDT","take_rate":"0.0009","make_rate":"0.0009"}]
+        #
+        #     [
+        #         {
+        #             "symbol":"ARVUSDT",
+        #             "take_rate":"0.0009",
+        #             "make_rate":"0.0009"
+        #         }
+        #     ]
+        #
         result = {}
         for i in range(0, len(response)):
-            entry = response[i]
-            symbol = self.safe_symbol(self.safe_string(entry, 'symbol'))
-            taker = self.safe_number(entry, 'take_rate')
-            maker = self.safe_number(entry, 'make_rate')
-            result[symbol] = {
-                'info': entry,
-                'symbol': symbol,
-                'taker': taker,
-                'maker': maker,
-            }
+            fee = self.parse_trading_fee(response[i])
+            symbol = fee['symbol']
+            result[symbol] = fee
         return result
 
     async def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -1242,13 +1299,13 @@ class hitbtc3(Exchange):
             lastTradeTimestamp = self.parse8601(updated)
         filled = self.safe_string(order, 'quantity_cumulative')
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        marketId = self.safe_string(order, 'marketId')
+        marketId = self.safe_string(order, 'symbol')
         market = self.safe_market(marketId, market)
         symbol = market['symbol']
         postOnly = self.safe_value(order, 'post_only')
         timeInForce = self.safe_string(order, 'time_in_force')
         rawTrades = self.safe_value(order, 'trades')
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': id,
@@ -1361,6 +1418,62 @@ class hitbtc3(Exchange):
             'id': id,
         }
 
+    async def fetch_funding_rate_history(self, symbol=None, since=None, limit=None, params={}):
+        await self.load_markets()
+        market = None
+        request = {
+            # all arguments are optional
+            # 'symbols': Comma separated list of symbol codes,
+            # 'sort': 'DESC' or 'ASC'
+            # 'from': 'Datetime or Number',
+            # 'till': 'Datetime or Number',
+            # 'limit': 100,
+            # 'offset': 0,
+        }
+        if symbol is not None:
+            market = self.market(symbol)
+            request['symbols'] = market['id']
+        if since is not None:
+            request['from'] = since
+        if limit is not None:
+            request['limit'] = limit
+        response = await self.publicGetPublicFuturesHistoryFunding(self.extend(request, params))
+        #
+        #    {
+        #        "BTCUSDT_PERP": [
+        #            {
+        #                "timestamp": "2021-07-29T16:00:00.271Z",
+        #                "funding_rate": "0.0001",
+        #                "avg_premium_index": "0.000061858585213222",
+        #                "next_funding_time": "2021-07-30T00:00:00.000Z",
+        #                "interest_rate": "0.0001"
+        #            },
+        #            ...
+        #        ],
+        #        ...
+        #    }
+        #
+        contracts = list(response.keys())
+        rates = []
+        for i in range(0, len(contracts)):
+            marketId = contracts[i]
+            market = self.safe_market(marketId)
+            fundingRateData = response[marketId]
+            for i in range(0, len(fundingRateData)):
+                entry = fundingRateData[i]
+                symbol = self.safe_symbol(market['symbol'])
+                fundingRate = self.safe_number(entry, 'funding_rate')
+                datetime = self.safe_string(entry, 'timestamp')
+                rates.append({
+                    'info': entry,
+                    'symbol': symbol,
+                    'fundingRate': fundingRate,
+                    'timestamp': self.parse8601(datetime),
+                    'datetime': datetime,
+                })
+        sorted = self.sort_by(rates, 'timestamp')
+        return self.filter_by_symbol_since_limit(sorted, symbol, since, limit)
+
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         #
         #     {
@@ -1416,6 +1529,6 @@ class hitbtc3(Exchange):
             payloadString = ''.join(payload)
             signature = self.hmac(self.encode(payloadString), self.encode(self.secret), hashlib.sha256, 'hex')
             secondPayload = self.apiKey + ':' + signature + ':' + timestamp
-            encoded = self.string_to_base64(secondPayload)
+            encoded = self.decode(self.string_to_base64(secondPayload))
             headers['Authorization'] = 'HS256 ' + encoded
         return {'url': url, 'method': method, 'body': body, 'headers': headers}

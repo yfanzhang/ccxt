@@ -277,6 +277,28 @@ module.exports = class tidex extends Exchange {
         return result;
     }
 
+    parseBalance (response) {
+        const balances = this.safeValue (response, 'return');
+        const timestamp = this.safeTimestamp (balances, 'server_time');
+        const result = {
+            'info': response,
+            'timestamp': timestamp,
+            'datetime': this.iso8601 (timestamp),
+        };
+        const funds = this.safeValue (balances, 'funds', {});
+        const currencyIds = Object.keys (funds);
+        for (let i = 0; i < currencyIds.length; i++) {
+            const currencyId = currencyIds[i];
+            const code = this.safeCurrencyCode (currencyId);
+            const balance = this.safeValue (funds, currencyId, {});
+            const account = this.account ();
+            account['free'] = this.safeString (balance, 'value');
+            account['used'] = this.safeString (balance, 'inOrders');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const response = await this.privatePostGetInfoExt (params);
@@ -306,25 +328,7 @@ module.exports = class tidex extends Exchange {
         //         }
         //     }
         //
-        const balances = this.safeValue (response, 'return');
-        const timestamp = this.safeTimestamp (balances, 'server_time');
-        const result = {
-            'info': response,
-            'timestamp': timestamp,
-            'datetime': this.iso8601 (timestamp),
-        };
-        const funds = this.safeValue (balances, 'funds', {});
-        const currencyIds = Object.keys (funds);
-        for (let i = 0; i < currencyIds.length; i++) {
-            const currencyId = currencyIds[i];
-            const code = this.safeCurrencyCode (currencyId);
-            const balance = this.safeValue (funds, currencyId, {});
-            const account = this.account ();
-            account['free'] = this.safeString (balance, 'value');
-            account['used'] = this.safeString (balance, 'inOrders');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -561,7 +565,7 @@ module.exports = class tidex extends Exchange {
             remainingString = this.safeString (returnResult, 'remains', amountString);
         }
         const timestamp = this.milliseconds ();
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
@@ -618,7 +622,7 @@ module.exports = class tidex extends Exchange {
             remaining = this.safeString (order, 'amount');
         }
         const fee = undefined;
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,

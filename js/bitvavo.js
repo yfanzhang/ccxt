@@ -282,31 +282,45 @@ module.exports = class bitvavo extends Exchange {
             const quoteId = this.safeString (market, 'quote');
             const base = this.safeCurrencyCode (baseId);
             const quote = this.safeCurrencyCode (quoteId);
-            const symbol = base + '/' + quote;
             const status = this.safeString (market, 'status');
-            const active = (status === 'trading');
             const baseCurrency = this.safeValue (currenciesById, baseId);
             let amountPrecision = undefined;
             if (baseCurrency !== undefined) {
                 amountPrecision = this.safeInteger (baseCurrency, 'decimals', 8);
             }
-            const precision = {
-                'price': this.safeInteger (market, 'pricePrecision'),
-                'amount': amountPrecision,
-            };
             result.push ({
                 'id': id,
-                'symbol': symbol,
+                'symbol': base + '/' + quote,
                 'base': base,
                 'quote': quote,
+                'settle': undefined,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'info': market,
+                'settleId': undefined,
                 'type': 'spot',
                 'spot': true,
-                'active': active,
-                'precision': precision,
+                'margin': false,
+                'swap': false,
+                'future': false,
+                'option': false,
+                'contract': false,
+                'linear': undefined,
+                'inverse': undefined,
+                'contractSize': undefined,
+                'active': (status === 'trading'),
+                'expiry': undefined,
+                'expiryDatetime': undefined,
+                'strike': undefined,
+                'optionType': undefined,
+                'precision': {
+                    'price': this.safeInteger (market, 'pricePrecision'),
+                    'amount': amountPrecision,
+                },
                 'limits': {
+                    'leverage': {
+                        'min': undefined,
+                        'max': undefined,
+                    },
                     'amount': {
                         'min': this.safeNumber (market, 'minOrderInBaseAsset'),
                         'max': undefined,
@@ -320,6 +334,7 @@ module.exports = class bitvavo extends Exchange {
                         'max': undefined,
                     },
                 },
+                'info': market,
             });
         }
         return result;
@@ -379,6 +394,8 @@ module.exports = class bitvavo extends Exchange {
                 'code': code,
                 'name': name,
                 'active': active,
+                'deposit': deposit,
+                'withdraw': withdrawal,
                 'fee': this.safeNumber (currency, 'withdrawalFee'),
                 'precision': precision,
                 'limits': {
@@ -710,18 +727,7 @@ module.exports = class bitvavo extends Exchange {
         return this.parseOHLCVs (response, market, timeframe, since, limit);
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetBalance (params);
-        //
-        //     [
-        //         {
-        //             "symbol": "BTC",
-        //             "available": "1.57593193",
-        //             "inOrder": "0.74832374"
-        //         }
-        //     ]
-        //
+    parseBalance (response) {
         const result = {
             'info': response,
             'timestamp': undefined,
@@ -736,7 +742,22 @@ module.exports = class bitvavo extends Exchange {
             account['used'] = this.safeString (balance, 'inOrder');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetBalance (params);
+        //
+        //     [
+        //         {
+        //             "symbol": "BTC",
+        //             "available": "1.57593193",
+        //             "inOrder": "0.74832374"
+        //         }
+        //     ]
+        //
+        return this.parseBalance (response);
     }
 
     async fetchDepositAddress (code, params = {}) {
@@ -1173,7 +1194,7 @@ module.exports = class bitvavo extends Exchange {
         const postOnly = this.safeValue (order, 'postOnly');
         // https://github.com/ccxt/ccxt/issues/8489
         const stopPrice = this.safeNumber (order, 'triggerPrice');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,

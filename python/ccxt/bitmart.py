@@ -260,6 +260,7 @@ class bitmart(Exchange):
                     '50022': ExchangeNotAvailable,  # 400, Service unavailable
                     '50023': BadSymbol,  # 400, This Symbol can't place order by api
                     '50029': InvalidOrder,  # {"message":"param not match : size * price >=1000","code":50029,"trace":"f931f030-b692-401b-a0c5-65edbeadc598","data":{}}
+                    '50030': InvalidOrder,  # {"message":"Order is already canceled","code":50030,"trace":"8d6f64ee-ad26-45a4-9efd-1080f9fca1fa","data":{}}
                     '53000': AccountSuspended,  # 403, Your account is frozen due to security policies. Please contact customer service
                     '53001': AccountSuspended,  # {"message":"Your kyc country is restricted. Please contact customer service.","code":53001,"trace":"8b445940-c123-4de9-86d7-73c5be2e7a24","data":{}}
                     '57001': BadRequest,  # 405, Method Not Allowed
@@ -307,6 +308,8 @@ class bitmart(Exchange):
             'commonCurrencies': {
                 'COT': 'Community Coin',
                 'CPC': 'CPCoin',
+                'DMS': 'DimSum',  # conflict with Dragon Mainland Shards
+                'FOX': 'Fox Finance',
                 'GDT': 'Gorilla Diamond',
                 '$HERO': 'Step Hero',
                 '$PAC': 'PAC',
@@ -315,6 +318,7 @@ class bitmart(Exchange):
                 'ONE': 'Menlo One',
                 'PLA': 'Plair',
                 'TCT': 'TacoCat Token',
+                'TRU': 'Truebit',  # conflict with TrueFi
             },
             'options': {
                 'networks': {
@@ -450,43 +454,57 @@ class bitmart(Exchange):
             # the docs are wrong: https://github.com/ccxt/ccxt/issues/5612
             #
             pricePrecision = self.safe_integer(market, 'price_max_precision')
-            precision = {
-                'amount': self.safe_number(market, 'base_min_size'),
-                'price': self.parse_number(self.decimal_to_precision(math.pow(10, -pricePrecision), ROUND, 12)),
-            }
             minBuyCost = self.safe_number(market, 'min_buy_amount')
             minSellCost = self.safe_number(market, 'min_sell_amount')
             minCost = max(minBuyCost, minSellCost)
-            limits = {
-                'amount': {
-                    'min': self.safe_number(market, 'base_min_size'),
-                    'max': self.safe_number(market, 'base_max_size'),
-                },
-                'price': {
-                    'min': None,
-                    'max': None,
-                },
-                'cost': {
-                    'min': minCost,
-                    'max': None,
-                },
-            }
             result.append({
                 'id': id,
                 'numericId': numericId,
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'type': 'spot',
                 'spot': True,
-                'future': False,
+                'margin': False,
                 'swap': False,
-                'precision': precision,
-                'limits': limits,
-                'info': market,
+                'future': False,
+                'option': False,
+                'contract': False,
+                'linear': None,
+                'inverse': None,
+                'contractSize': None,
                 'active': True,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'amount': self.safe_number(market, 'base_min_size'),
+                    'price': self.parse_number(self.decimal_to_precision(math.pow(10, -pricePrecision), ROUND, 14)),
+                },
+                'limits': {
+                    'leverage': {
+                        'min': self.parse_number('1'),
+                        'max': None,
+                    },
+                    'amount': {
+                        'min': self.safe_number(market, 'base_min_size'),
+                        'max': self.safe_number(market, 'base_max_size'),
+                    },
+                    'price': {
+                        'min': None,
+                        'max': None,
+                    },
+                    'cost': {
+                        'min': minCost,
+                        'max': None,
+                    },
+                },
+                'info': market,
             })
         return result
 
@@ -556,9 +574,10 @@ class bitmart(Exchange):
             numericId = self.safe_integer(contract, 'contract_id')
             baseId = self.safe_string(contract, 'base_coin')
             quoteId = self.safe_string(contract, 'quote_coin')
+            settleId = self.safe_string(contract, 'price_coin')
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = self.safe_string(contract, 'name')
+            settle = self.safe_currency_code(settleId)
             #
             # https://github.com/bitmartexchange/bitmart-official-api-docs/blob/master/rest/public/symbols_details.md#response-details
             # from the above API doc:
@@ -570,55 +589,71 @@ class bitmart(Exchange):
             #
             amountPrecision = self.safe_number(contract, 'vol_unit')
             pricePrecision = self.safe_number(contract, 'price_unit')
-            precision = {
-                'amount': amountPrecision,
-                'price': pricePrecision,
-            }
-            limits = {
-                'amount': {
-                    'min': self.safe_number(contract, 'min_vol'),
-                    'max': self.safe_number(contract, 'max_vol'),
-                },
-                'price': {
-                    'min': None,
-                    'max': None,
-                },
-                'cost': {
-                    'min': None,
-                    'max': None,
-                },
-            }
             contractType = self.safe_value(contract, 'contract_type')
             future = False
             swap = False
             type = 'contract'
+            symbol = base + '/' + quote
+            expiry = self.parse8601(self.safe_string(contract, 'delive_at'))
             if contractType == 1:
                 type = 'swap'
                 swap = True
+                symbol = symbol + ':' + settle
             elif contractType == 2:
                 type = 'future'
                 future = True
+                symbol = symbol + ':' + settle + '-' + self.yymmdd(expiry, '')
             feeConfig = self.safe_value(market, 'fee_config', {})
-            maker = self.safe_number(feeConfig, 'maker_fee')
-            taker = self.safe_number(feeConfig, 'taker_fee')
             result.append({
                 'id': id,
                 'numericId': numericId,
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': settle,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'maker': maker,
-                'taker': taker,
+                'settleId': settleId,
                 'type': type,
                 'spot': False,
-                'future': future,
+                'margin': False,
                 'swap': swap,
-                'precision': precision,
-                'limits': limits,
-                'info': market,
+                'future': future,
+                'option': False,
+                'contract': True,
+                'linear': None,
+                'inverse': None,
+                'taker': self.safe_number(feeConfig, 'taker_fee'),
+                'maker': self.safe_number(feeConfig, 'maker_fee'),
+                'contractSize': self.safe_number(market, 'contract_size'),
                 'active': None,
+                'expiry': expiry,
+                'expiryDatetime': self.iso8601(expiry),
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'amount': amountPrecision,
+                    'price': pricePrecision,
+                },
+                'limits': {
+                    'leverage': {
+                        'min': self.safe_number(contract, 'min_leverage'),
+                        'max': self.safe_number(contract, 'max_leverage'),
+                    },
+                    'amount': {
+                        'min': self.safe_number(contract, 'min_vol'),
+                        'max': self.safe_number(contract, 'max_vol'),
+                    },
+                    'price': {
+                        'min': None,
+                        'max': None,
+                    },
+                    'cost': {
+                        'min': None,
+                        'max': None,
+                    },
+                },
+                'info': market,
             })
         return result
 
@@ -698,8 +733,8 @@ class bitmart(Exchange):
             percentage *= 100
         if percentage is None:
             percentage = self.safe_number(ticker, 'price_change_percent_24h')
-        baseVolume = self.safe_number_2(ticker, 'base_volume_24h', 'base_coin_volume')
-        quoteVolume = self.safe_number_2(ticker, 'quote_volume_24h', 'quote_coin_volume')
+        baseVolume = self.safe_number_2(ticker, 'base_coin_volume', 'base_volume_24h')
+        quoteVolume = self.safe_number_2(ticker, 'quote_coin_volume', 'quote_volume_24h')
         quoteVolume = self.safe_number(ticker, 'volume_24h', quoteVolume)
         open = self.safe_number_2(ticker, 'open_24h', 'open')
         average = None
@@ -851,6 +886,8 @@ class bitmart(Exchange):
                 'name': name,
                 'info': currency,  # the original payload
                 'active': active,
+                'deposit': depositEnabled,
+                'withdraw': withdrawEnabled,
                 'fee': None,
                 'precision': None,
                 'limits': {
@@ -1167,7 +1204,7 @@ class bitmart(Exchange):
                 request['from'] = start
                 request['to'] = end
             else:
-                start = int(since / 1000)
+                start = int(since / 1000) - 1
                 end = self.sum(start, limit * duration)
                 request['from'] = start
                 request['to'] = end
@@ -1183,7 +1220,7 @@ class bitmart(Exchange):
                 request['startTime'] = start
                 request['endTime'] = end
             else:
-                start = int(since / 1000)
+                start = int(since / 1000) - 1
                 end = self.sum(start, limit * duration)
                 request['startTime'] = start
                 request['endTime'] = end
@@ -1374,6 +1411,21 @@ class bitmart(Exchange):
         trades = self.safe_value(data, 'trades', [])
         return self.parse_trades(trades, market, since, limit)
 
+    def parse_balance(self, response):
+        data = self.safe_value(response, 'data', {})
+        wallet = self.safe_value_2(data, 'wallet', 'accounts', [])
+        result = {'info': response}
+        for i in range(0, len(wallet)):
+            balance = wallet[i]
+            currencyId = self.safe_string_2(balance, 'id', 'currency')
+            currencyId = self.safe_string(balance, 'coin_code', currencyId)
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string_2(balance, 'available', 'available_vol')
+            account['used'] = self.safe_string_2(balance, 'frozen', 'freeze_vol')
+            result[code] = account
+        return self.safe_balance(result)
+
     def fetch_balance(self, params={}):
         self.load_markets()
         method = None
@@ -1443,19 +1495,7 @@ class bitmart(Exchange):
         #         }
         #     }
         #
-        data = self.safe_value(response, 'data', {})
-        wallet = self.safe_value_2(data, 'wallet', 'accounts', [])
-        result = {'info': response}
-        for i in range(0, len(wallet)):
-            balance = wallet[i]
-            currencyId = self.safe_string_2(balance, 'id', 'currency')
-            currencyId = self.safe_string(balance, 'coin_code', currencyId)
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string_2(balance, 'available', 'available_vol')
-            account['used'] = self.safe_string_2(balance, 'frozen', 'freeze_vol')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def parse_order(self, order, market=None):
         #
@@ -1536,7 +1576,7 @@ class bitmart(Exchange):
             type = 'limit'
         elif category == 2:
             type = 'market'
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'info': order,
@@ -1799,6 +1839,8 @@ class bitmart(Exchange):
                 request['status'] = 9
             elif status == 'closed':
                 request['status'] = 6
+            elif status == 'canceled':
+                request['status'] = 8
             else:
                 request['status'] = status
         elif market['swap'] or market['future']:
@@ -1886,6 +1928,9 @@ class bitmart(Exchange):
 
     def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
         return self.fetch_orders_by_status('closed', symbol, since, limit, params)
+
+    def fetch_canceled_orders(self, symbol=None, since=None, limit=None, params={}):
+        return self.fetch_orders_by_status('canceled', symbol, since, limit, params)
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
@@ -2010,14 +2055,24 @@ class bitmart(Exchange):
         data = self.safe_value(response, 'data', {})
         address = self.safe_string(data, 'address')
         tag = self.safe_string(data, 'address_memo')
+        chain = self.safe_string(data, 'chain')
+        network = None
+        if chain is not None:
+            parts = chain.split('-')
+            networkId = self.safe_string(parts, 1)
+            network = self.safe_network(networkId)
         self.check_address(address)
         return {
             'currency': code,
             'address': address,
             'tag': tag,
-            'network': None,  # TODO: parse
+            'network': network,
             'info': response,
         }
+
+    def safe_network(self, networkId):
+        # TODO: parse
+        return networkId
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         tag, params = self.handle_withdraw_tag_and_params(tag, params)
@@ -2175,6 +2230,7 @@ class bitmart(Exchange):
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': None,
             'address': address,
             'addressFrom': None,
             'addressTo': None,

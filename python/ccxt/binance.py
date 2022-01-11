@@ -12,16 +12,19 @@ from ccxt.base.errors import AccountSuspended
 from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import BadRequest
 from ccxt.base.errors import BadSymbol
+from ccxt.base.errors import BadResponse
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
 from ccxt.base.errors import OrderImmediatelyFillable
+from ccxt.base.errors import OrderNotFillable
 from ccxt.base.errors import NotSupported
 from ccxt.base.errors import DDoSProtection
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import InvalidNonce
+from ccxt.base.errors import RequestTimeout
 from ccxt.base.decimal_to_precision import TRUNCATE
 from ccxt.base.precise import Precise
 
@@ -38,51 +41,93 @@ class binance(Exchange):
             'pro': True,
             # new metainfo interface
             'has': {
+                'margin': True,
+                'swap': True,
+                'future': True,
+                'addMargin': True,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
+                'cancelOrders': None,
                 'CORS': None,
+                'createDepositAddress': None,
                 'createOrder': True,
+                'createReduceOnlyOrder': True,
+                'deposit': None,
+                'fetchAccounts': None,
+                'fetchAllTradingFees': None,
                 'fetchBalance': True,
-                'fetchBorrowRate': True,
-                'fetchBorrowRates': False,
                 'fetchBidsAsks': True,
+                'fetchBorrowRate': True,
+                'fetchBorrowRateHistory': True,
+                'fetchBorrowRates': False,
+                'fetchBorrowRatesPerSymbol': False,
+                'fetchCanceledOrders': None,
+                'fetchClosedOrder': None,
                 'fetchClosedOrders': 'emulated',
                 'fetchCurrencies': True,
+                'fetchDeposit': None,
                 'fetchDepositAddress': True,
+                'fetchDepositAddresses': None,
+                'fetchDepositAddressesByNetwork': None,
                 'fetchDeposits': True,
+                'fetchFundingFee': None,
                 'fetchFundingFees': True,
                 'fetchFundingHistory': True,
                 'fetchFundingRate': True,
                 'fetchFundingRateHistory': True,
                 'fetchFundingRates': True,
                 'fetchIndexOHLCV': True,
-                'fetchIsolatedPositions': True,
+                'fetchIsolatedPositions': None,
+                'fetchL3OrderBook': None,
+                'fetchLedger': None,
+                'fetchLedgerEntry': None,
+                'fetchLeverage': None,
                 'fetchMarkets': True,
+                'fetchMarketsByType': None,
                 'fetchMarkOHLCV': True,
+                'fetchMyBuys': None,
+                'fetchMySells': None,
                 'fetchMyTrades': True,
+                'fetchNetworkDepositAddress': None,
                 'fetchOHLCV': True,
+                'fetchOpenOrder': None,
                 'fetchOpenOrders': True,
                 'fetchOrder': True,
                 'fetchOrderBook': True,
+                'fetchOrderBooks': None,
                 'fetchOrders': True,
+                'fetchOrdersByState': None,
+                'fetchOrdersByStatus': None,
+                'fetchOrderTrades': True,
+                'fetchPartiallyFilledOrders': None,
+                'fetchPosition': None,
                 'fetchPositions': True,
+                'fetchPositionsRisk': True,
                 'fetchPremiumIndexOHLCV': False,
                 'fetchStatus': True,
                 'fetchTicker': True,
                 'fetchTickers': True,
+                'fetchTickersByType': None,
                 'fetchTime': True,
                 'fetchTrades': True,
                 'fetchTradingFee': True,
                 'fetchTradingFees': True,
+                'fetchTradingLimits': None,
                 'fetchTransactions': False,
                 'fetchTransfers': True,
+                'fetchWithdrawAddress': False,
+                'fetchWithdrawAddressesByNetwork': False,
+                'fetchWithdrawal': False,
                 'fetchWithdrawals': True,
+                'fetchWithdrawalWhitelist': False,
+                'loadLeverageBrackets': True,
+                'reduceMargin': True,
                 'setLeverage': True,
                 'setMarginMode': True,
                 'setPositionMode': True,
-                'addMargin': True,
-                'reduceMargin': True,
+                'signIn': False,
                 'transfer': True,
+                'transferOut': False,
                 'withdraw': True,
             },
             'timeframes': {
@@ -145,9 +190,9 @@ class binance(Exchange):
                 # the API structure below will need 3-layer apidefs
                 'sapi': {
                     'get': {
-                        'accountSnapshot': 1,
                         'system/status': 1,
                         # these endpoints require self.apiKey
+                        'accountSnapshot': 1,
                         'margin/asset': 1,
                         'margin/pair': 1,
                         'margin/allAssets': 1,
@@ -181,6 +226,9 @@ class binance(Exchange):
                         'margin/orderList': 2,
                         'margin/allOrderList': 10,
                         'margin/openOrderList': 3,
+                        'margin/crossMarginData': {'cost': 1, 'noCoin': 5},
+                        'margin/isolatedMarginData': {'cost': 1, 'noCoin': 10},
+                        'margin/isolatedMarginTier': 1,
                         'loan/income': 1,
                         'fiat/orders': 1,
                         'fiat/payments': 1,
@@ -193,6 +241,7 @@ class binance(Exchange):
                         'futures/loan/calcMaxAdjustAmount': 1,
                         'futures/loan/adjustCollateral/history': 1,
                         'futures/loan/liquidationHistory': 1,
+                        'rebate/taxQuery': 1,
                         # https://binance-docs.github.io/apidocs/spot/en/#withdraw-sapi
                         'capital/config/getall': 1,  # get networks for withdrawing USDT ERC20 vs USDT Omni
                         'capital/deposit/address': 1,
@@ -200,6 +249,7 @@ class binance(Exchange):
                         'capital/deposit/subAddress': 1,
                         'capital/deposit/subHisrec': 1,
                         'capital/withdraw/history': 1,
+                        'convert/tradeFlow': 1,
                         'account/status': 1,
                         'account/apiTradingStatus': 1,
                         'account/apiRestrictions/ipRestriction': 1,
@@ -217,6 +267,7 @@ class binance(Exchange):
                         'sub-account/sub/transfer/history': 1,
                         'sub-account/transfer/subUserHistory': 1,
                         'sub-account/universalTransfer': 1,
+                        'managed-subaccount/asset': 1,
                         # lending endpoints
                         'lending/daily/product/list': 1,
                         'lending/daily/userLeftQuota': 1,
@@ -279,8 +330,14 @@ class binance(Exchange):
                         # v2 not supported yet
                         # GET /sapi/v2/broker/subAccount/futuresSummary
                         'account/apiRestrictions': 1,
-                        # subaccounts
-                        'managed-subaccount/asset': 1,
+                        # c2c / p2p
+                        'c2c/orderMatch/listUserOrderHistory': 1,
+                        # nft endpoints
+                        'nft/history/transactions': 1,
+                        'nft/history/deposit': 1,
+                        'nft/history/withdraw': 1,
+                        'nft/user/getAsset': 1,
+                        'pay/transactions': 1,
                     },
                     'post': {
                         'asset/dust': 1,
@@ -886,56 +943,199 @@ class binance(Exchange):
                     'Market is closed.': ExchangeNotAvailable,  # {"code":-1013,"msg":"Market is closed."}
                     'Too many requests. Please try again later.': DDoSProtection,  # {"msg":"Too many requests. Please try again later.","success":false}
                     '-1000': ExchangeNotAvailable,  # {"code":-1000,"msg":"An unknown error occured while processing the request."}
-                    '-1001': ExchangeNotAvailable,  # 'Internal error; unable to process your request. Please try again.'
-                    '-1002': AuthenticationError,  # 'You are not authorized to execute self request.'
+                    '-1001': ExchangeNotAvailable,  # {"code":-1001,"msg":"'Internal error; unable to process your request. Please try again.'"}
+                    '-1002': AuthenticationError,  # {"code":-1002,"msg":"'You are not authorized to execute self request.'"}
                     '-1003': RateLimitExceeded,  # {"code":-1003,"msg":"Too much request weight used, current limit is 1200 request weight per 1 MINUTE. Please use the websocket for live updates to avoid polling the API."}
-                    '-1013': InvalidOrder,  # createOrder -> 'invalid quantity'/'invalid price'/MIN_NOTIONAL
-                    '-1015': RateLimitExceeded,  # 'Too many new orders; current limit is %s orders per %s.'
-                    '-1016': ExchangeNotAvailable,  # 'This service is no longer available.',
-                    '-1020': BadRequest,  # 'This operation is not supported.'
-                    '-1021': InvalidNonce,  # 'your time is ahead of server'
+                    '-1004': DDoSProtection,  # {"code":-1004,"msg":"Server is busy, please wait and try again"}
+                    '-1005': PermissionDenied,  # {"code":-1005,"msg":"No such IP has been white listed"}
+                    '-1006': BadResponse,  # {"code":-1006,"msg":"An unexpected response was received from the message bus. Execution status unknown."}
+                    '-1007': RequestTimeout,  # {"code":-1007,"msg":"Timeout waiting for response from backend server. Send status unknown; execution status unknown."}
+                    '-1010': BadResponse,  # {"code":-1010,"msg":"ERROR_MSG_RECEIVED."}
+                    '-1011': PermissionDenied,  # {"code":-1011,"msg":"This IP cannot access self route."}
+                    '-1013': InvalidOrder,  # {"code":-1013,"msg":"createOrder -> 'invalid quantity'/'invalid price'/MIN_NOTIONAL"}
+                    '-1014': InvalidOrder,  # {"code":-1014,"msg":"Unsupported order combination."}
+                    '-1015': RateLimitExceeded,  # {"code":-1015,"msg":"'Too many new orders; current limit is %s orders per %s.'"}
+                    '-1016': ExchangeNotAvailable,  # {"code":-1016,"msg":"'This service is no longer available.',"}
+                    '-1020': BadRequest,  # {"code":-1020,"msg":"'This operation is not supported.'"}
+                    '-1021': InvalidNonce,  # {"code":-1021,"msg":"'your time is ahead of server'"}
                     '-1022': AuthenticationError,  # {"code":-1022,"msg":"Signature for self request is not valid."}
-                    '-1100': BadRequest,  # createOrder(symbol, 1, asdf) -> 'Illegal characters found in parameter 'price'
-                    '-1101': BadRequest,  # Too many parameters; expected %s and received %s.
-                    '-1102': BadRequest,  # Param %s or %s must be sent, but both were empty
-                    '-1103': BadRequest,  # An unknown parameter was sent.
-                    '-1104': BadRequest,  # Not all sent parameters were read, read 8 parameters but was sent 9
-                    '-1105': BadRequest,  # Parameter %s was empty.
-                    '-1106': BadRequest,  # Parameter %s sent when not required.
-                    '-1111': BadRequest,  # Precision is over the maximum defined for self asset.
-                    '-1112': InvalidOrder,  # No orders on book for symbol.
-                    '-1114': BadRequest,  # TimeInForce parameter sent when not required.
-                    '-1115': BadRequest,  # Invalid timeInForce.
-                    '-1116': BadRequest,  # Invalid orderType.
-                    '-1117': BadRequest,  # Invalid side.
-                    '-1118': BadRequest,  # New client order ID was empty.
-                    '-1119': BadRequest,  # Original client order ID was empty.
-                    '-1120': BadRequest,  # Invalid interval.
-                    '-1121': BadSymbol,  # Invalid symbol.
-                    '-1125': AuthenticationError,  # This listenKey does not exist.
-                    '-1127': BadRequest,  # More than %s hours between startTime and endTime.
-                    '-1128': BadRequest,  # {"code":-1128,"msg":"Combination of optional parameters invalid."}
-                    '-1130': BadRequest,  # Data sent for paramter %s is not valid.
-                    '-1131': BadRequest,  # recvWindow must be less than 60000
+                    '-1023': BadRequest,  # {"code":-1023,"msg":"Start time is greater than end time."}
+                    '-1099': AuthenticationError,  # {"code":-1099,"msg":"Not found, authenticated, or authorized"}
+                    '-1100': BadRequest,  # {"code":-1100,"msg":"createOrder(symbol, 1, asdf) -> 'Illegal characters found in parameter 'price'"}
+                    '-1101': BadRequest,  # {"code":-1101,"msg":"Too many parameters; expected %s and received %s."}
+                    '-1102': BadRequest,  # {"code":-1102,"msg":"Param %s or %s must be sent, but both were empty"}
+                    '-1103': BadRequest,  # {"code":-1103,"msg":"An unknown parameter was sent."}
+                    '-1104': BadRequest,  # {"code":-1104,"msg":"Not all sent parameters were read, read 8 parameters but was sent 9"}
+                    '-1105': BadRequest,  # {"code":-1105,"msg":"Parameter %s was empty."}
+                    '-1106': BadRequest,  # {"code":-1106,"msg":"Parameter %s sent when not required."}
+                    '-1108': BadRequest,  # {"code":-1108,"msg":"Invalid asset."}
+                    '-1109': AuthenticationError,  # {"code":-1109,"msg":"Invalid account."}
+                    '-1110': BadRequest,  # {"code":-1110,"msg":"Invalid symbolType."}
+                    '-1111': BadRequest,  # {"code":-1111,"msg":"Precision is over the maximum defined for self asset."}
+                    '-1112': InvalidOrder,  # {"code":-1112,"msg":"No orders on book for symbol."}
+                    '-1113': BadRequest,  # {"code":-1113,"msg":"Withdrawal amount must be negative."}
+                    '-1114': BadRequest,  # {"code":-1114,"msg":"TimeInForce parameter sent when not required."}
+                    '-1115': BadRequest,  # {"code":-1115,"msg":"Invalid timeInForce."}
+                    '-1116': BadRequest,  # {"code":-1116,"msg":"Invalid orderType."}
+                    '-1117': BadRequest,  # {"code":-1117,"msg":"Invalid side."}
+                    '-1118': BadRequest,  # {"code":-1118,"msg":"New client order ID was empty."}
+                    '-1119': BadRequest,  # {"code":-1119,"msg":"Original client order ID was empty."}
+                    '-1120': BadRequest,  # {"code":-1120,"msg":"Invalid interval."}
+                    '-1121': BadSymbol,  # {"code":-1121,"msg":"Invalid symbol."}
+                    '-1125': AuthenticationError,  # {"code":-1125,"msg":"This listenKey does not exist."}
+                    '-1127': BadRequest,  # {"code":-1127,"msg":"More than %s hours between startTime and endTime."}
+                    '-1128': BadRequest,  # {"code":-1128,"msg":"{"code":-1128,"msg":"Combination of optional parameters invalid."}"}
+                    '-1130': BadRequest,  # {"code":-1130,"msg":"Data sent for paramter %s is not valid."}
+                    '-1131': BadRequest,  # {"code":-1131,"msg":"recvWindow must be less than 60000"}
+                    '-1136': BadRequest,  # {"code":-1136,"msg":"Invalid newOrderRespType"}
                     '-2008': AuthenticationError,  # {"code":-2008,"msg":"Invalid Api-Key ID."}
-                    '-2010': ExchangeError,  # generic error code for createOrder -> 'Account has insufficient balance for requested action.', {"code":-2010,"msg":"Rest API trading is not enabled."}, etc...
-                    '-2011': OrderNotFound,  # cancelOrder(1, 'BTC/USDT') -> 'UNKNOWN_ORDER'
-                    '-2013': OrderNotFound,  # fetchOrder(1, 'BTC/USDT') -> 'Order does not exist'
-                    '-2014': AuthenticationError,  # {"code":-2014, "msg": "API-key format invalid."}
-                    '-2015': AuthenticationError,  # "Invalid API-key, IP, or permissions for action."
+                    '-2010': ExchangeError,  # {"code":-2010,"msg":"generic error code for createOrder -> 'Account has insufficient balance for requested action.', {"code":-2010,"msg":"Rest API trading is not enabled."}, etc..."}
+                    '-2011': OrderNotFound,  # {"code":-2011,"msg":"cancelOrder(1, 'BTC/USDT') -> 'UNKNOWN_ORDER'"}
+                    '-2013': OrderNotFound,  # {"code":-2013,"msg":"fetchOrder(1, 'BTC/USDT') -> 'Order does not exist'"}
+                    '-2014': AuthenticationError,  # {"code":-2014,"msg":"API-key format invalid."}
+                    '-2015': AuthenticationError,  # {"code":-2015,"msg":"Invalid API-key, IP, or permissions for action."}
+                    '-2016': BadRequest,  # {"code":-2016,"msg":"No trading window could be found for the symbol. Try ticker/24hrs instead."}
+                    '-2018': InsufficientFunds,  # {"code":-2018,"msg":"Balance is insufficient"}
                     '-2019': InsufficientFunds,  # {"code":-2019,"msg":"Margin is insufficient."}
+                    '-2020': OrderNotFillable,  # {"code":-2020,"msg":"Unable to fill."}
+                    '-2021': OrderImmediatelyFillable,  # {"code":-2021,"msg":"Order would immediately trigger."}
+                    '-2022': InvalidOrder,  # {"code":-2022,"msg":"ReduceOnly Order is rejected."}
+                    '-2023': InsufficientFunds,  # {"code":-2023,"msg":"User in liquidation mode now."}
+                    '-2024': InsufficientFunds,  # {"code":-2024,"msg":"Position is not sufficient."}
+                    '-2025': InvalidOrder,  # {"code":-2025,"msg":"Reach max open order limit."}
+                    '-2026': InvalidOrder,  # {"code":-2026,"msg":"This OrderType is not supported when reduceOnly."}
+                    '-2027': InvalidOrder,  # {"code":-2027,"msg":"Exceeded the maximum allowable position at current leverage."}
+                    '-2028': InsufficientFunds,  # {"code":-2028,"msg":"Leverage is smaller than permitted: insufficient margin balance"}
+                    '-3000': ExchangeError,  # {"code":-3000,"msg":"Internal server error."}
+                    '-3001': AuthenticationError,  # {"code":-3001,"msg":"Please enable 2FA first."}
+                    '-3002': BadSymbol,  # {"code":-3002,"msg":"We don't have self asset."}
+                    '-3003': BadRequest,  # {"code":-3003,"msg":"Margin account does not exist."}
+                    '-3004': ExchangeError,  # {"code":-3004,"msg":"Trade not allowed."}
                     '-3005': InsufficientFunds,  # {"code":-3005,"msg":"Transferring out not allowed. Transfer out amount exceeds max amount."}
                     '-3006': InsufficientFunds,  # {"code":-3006,"msg":"Your borrow amount has exceed maximum borrow amount."}
+                    '-3007': ExchangeError,  # {"code":-3007,"msg":"You have pending transaction, please try again later.."}
                     '-3008': InsufficientFunds,  # {"code":-3008,"msg":"Borrow not allowed. Your borrow amount has exceed maximum borrow amount."}
+                    '-3009': BadRequest,  # {"code":-3009,"msg":"This asset are not allowed to transfer into margin account currently."}
                     '-3010': ExchangeError,  # {"code":-3010,"msg":"Repay not allowed. Repay amount exceeds borrow amount."}
+                    '-3011': BadRequest,  # {"code":-3011,"msg":"Your input date is invalid."}
+                    '-3012': ExchangeError,  # {"code":-3012,"msg":"Borrow is banned for self asset."}
+                    '-3013': BadRequest,  # {"code":-3013,"msg":"Borrow amount less than minimum borrow amount."}
+                    '-3014': AccountSuspended,  # {"code":-3014,"msg":"Borrow is banned for self account."}
                     '-3015': ExchangeError,  # {"code":-3015,"msg":"Repay amount exceeds borrow amount."}
-                    '-3022': AccountSuspended,  # You account's trading is banned.
-                    '-4028': BadRequest,  # {"code":-4028,"msg":"Leverage 100 is not valid"}
+                    '-3016': BadRequest,  # {"code":-3016,"msg":"Repay amount less than minimum repay amount."}
+                    '-3017': ExchangeError,  # {"code":-3017,"msg":"This asset are not allowed to transfer into margin account currently."}
+                    '-3018': AccountSuspended,  # {"code":-3018,"msg":"Transferring in has been banned for self account."}
+                    '-3019': AccountSuspended,  # {"code":-3019,"msg":"Transferring out has been banned for self account."}
                     '-3020': InsufficientFunds,  # {"code":-3020,"msg":"Transfer out amount exceeds max amount."}
+                    '-3021': BadRequest,  # {"code":-3021,"msg":"Margin account are not allowed to trade self trading pair."}
+                    '-3022': AccountSuspended,  # {"code":-3022,"msg":"You account's trading is banned."}
+                    '-3023': BadRequest,  # {"code":-3023,"msg":"You can't transfer out/place order under current margin level."}
+                    '-3024': ExchangeError,  # {"code":-3024,"msg":"The unpaid debt is too small after self repayment."}
+                    '-3025': BadRequest,  # {"code":-3025,"msg":"Your input date is invalid."}
+                    '-3026': BadRequest,  # {"code":-3026,"msg":"Your input param is invalid."}
+                    '-3027': BadSymbol,  # {"code":-3027,"msg":"Not a valid margin asset."}
+                    '-3028': BadSymbol,  # {"code":-3028,"msg":"Not a valid margin pair."}
+                    '-3029': ExchangeError,  # {"code":-3029,"msg":"Transfer failed."}
+                    '-3036': AccountSuspended,  # {"code":-3036,"msg":"This account is not allowed to repay."}
+                    '-3037': ExchangeError,  # {"code":-3037,"msg":"PNL is clearing. Wait a second."}
+                    '-3038': BadRequest,  # {"code":-3038,"msg":"Listen key not found."}
                     '-3041': InsufficientFunds,  # {"code":-3041,"msg":"Balance is not enough"}
-                    '-5013': InsufficientFunds,  # Asset transfer failed: insufficient balance"
-                    '-11008': InsufficientFunds,  # {"code":-11008,"msg":"Exceeding the account's maximum borrowable limit."}
-                    '-4051': InsufficientFunds,  # {"code":-4051,"msg":"Isolated balance insufficient."}
+                    '-3042': BadRequest,  # {"code":-3042,"msg":"PriceIndex not available for self margin pair."}
+                    '-3043': BadRequest,  # {"code":-3043,"msg":"Transferring in not allowed."}
+                    '-3044': DDoSProtection,  # {"code":-3044,"msg":"System busy."}
+                    '-3045': ExchangeError,  # {"code":-3045,"msg":"The system doesn't have enough asset now."}
+                    '-3999': ExchangeError,  # {"code":-3999,"msg":"This function is only available for invited users."}
+                    '-4001 ': BadRequest,  # {"code":-4001 ,"msg":"Invalid operation."}
+                    '-4002 ': BadRequest,  # {"code":-4002 ,"msg":"Invalid get."}
+                    '-4003 ': BadRequest,  # {"code":-4003 ,"msg":"Your input email is invalid."}
+                    '-4004': AuthenticationError,  # {"code":-4004,"msg":"You don't login or auth."}
+                    '-4005 ': RateLimitExceeded,  # {"code":-4005 ,"msg":"Too many new requests."}
+                    '-4006 ': BadRequest,  # {"code":-4006 ,"msg":"Support main account only."}
+                    '-4007 ': BadRequest,  # {"code":-4007 ,"msg":"Address validation is not passed."}
+                    '-4008 ': BadRequest,  # {"code":-4008 ,"msg":"Address tag validation is not passed."}
+                    '-4010 ': BadRequest,  # {"code":-4010 ,"msg":"White list mail has been confirmed."}  # [TODO] possible bug: it should probably be "has not been confirmed"
+                    '-4011 ': BadRequest,  # {"code":-4011 ,"msg":"White list mail is invalid."}
+                    '-4012 ': BadRequest,  # {"code":-4012 ,"msg":"White list is not opened."}
+                    '-4013 ': AuthenticationError,  # {"code":-4013 ,"msg":"2FA is not opened."}
+                    '-4014 ': PermissionDenied,  # {"code":-4014 ,"msg":"Withdraw is not allowed within 2 min login."}
+                    '-4015 ': ExchangeError,  # {"code":-4015 ,"msg":"Withdraw is limited."}
+                    '-4016 ': PermissionDenied,  # {"code":-4016 ,"msg":"Within 24 hours after password modification, withdrawal is prohibited."}
+                    '-4017 ': PermissionDenied,  # {"code":-4017 ,"msg":"Within 24 hours after the release of 2FA, withdrawal is prohibited."}
+                    '-4018': BadSymbol,  # {"code":-4018,"msg":"We don't have self asset."}
+                    '-4019': BadSymbol,  # {"code":-4019,"msg":"Current asset is not open for withdrawal."}
+                    '-4021': BadRequest,  # {"code":-4021,"msg":"Asset withdrawal must be an %s multiple of %s."}
+                    '-4022': BadRequest,  # {"code":-4022,"msg":"Not less than the minimum pick-up quantity %s."}
+                    '-4023': ExchangeError,  # {"code":-4023,"msg":"Within 24 hours, the withdrawal exceeds the maximum amount."}
+                    '-4024': InsufficientFunds,  # {"code":-4024,"msg":"You don't have self asset."}
+                    '-4025': InsufficientFunds,  # {"code":-4025,"msg":"The number of hold asset is less than zero."}
+                    '-4026': InsufficientFunds,  # {"code":-4026,"msg":"You have insufficient balance."}
+                    '-4027': ExchangeError,  # {"code":-4027,"msg":"Failed to obtain tranId."}
+                    '-4028': BadRequest,  # {"code":-4028,"msg":"The amount of withdrawal must be greater than the Commission."}
+                    '-4029': BadRequest,  # {"code":-4029,"msg":"The withdrawal record does not exist."}
+                    '-4030': ExchangeError,  # {"code":-4030,"msg":"Confirmation of successful asset withdrawal. [TODO] possible bug in docs"}
+                    '-4031': ExchangeError,  # {"code":-4031,"msg":"Cancellation failed."}
+                    '-4032': ExchangeError,  # {"code":-4032,"msg":"Withdraw verification exception."}
+                    '-4033': BadRequest,  # {"code":-4033,"msg":"Illegal address."}
+                    '-4034': ExchangeError,  # {"code":-4034,"msg":"The address is suspected of fake."}
+                    '-4035': PermissionDenied,  # {"code":-4035,"msg":"This address is not on the whitelist. Please join and try again."}
+                    '-4036': BadRequest,  # {"code":-4036,"msg":"The new address needs to be withdrawn in {0} hours."}
+                    '-4037': ExchangeError,  # {"code":-4037,"msg":"Re-sending Mail failed."}
+                    '-4038': ExchangeError,  # {"code":-4038,"msg":"Please try again in 5 minutes."}
+                    '-4039': BadRequest,  # {"code":-4039,"msg":"The user does not exist."}
+                    '-4040': BadRequest,  # {"code":-4040,"msg":"This address not charged."}
+                    '-4041': ExchangeError,  # {"code":-4041,"msg":"Please try again in one minute."}
+                    '-4042': ExchangeError,  # {"code":-4042,"msg":"This asset cannot get deposit address again."}
+                    '-4043': BadRequest,  # {"code":-4043,"msg":"More than 100 recharge addresses were used in 24 hours."}
+                    '-4044': BadRequest,  # {"code":-4044,"msg":"This is a blacklist country."}
+                    '-4045': ExchangeError,  # {"code":-4045,"msg":"Failure to acquire assets."}
+                    '-4046': AuthenticationError,  # {"code":-4046,"msg":"Agreement not confirmed."}
+                    '-4047': BadRequest,  # {"code":-4047,"msg":"Time interval must be within 0-90 days"}
+                    '-5001': BadRequest,  # {"code":-5001,"msg":"Don't allow transfer to micro assets."}
+                    '-5002': InsufficientFunds,  # {"code":-5002,"msg":"You have insufficient balance."}
+                    '-5003': InsufficientFunds,  # {"code":-5003,"msg":"You don't have self asset."}
+                    '-5004': BadRequest,  # {"code":-5004,"msg":"The residual balances of %s have exceeded 0.001BTC, Please re-choose."}
+                    '-5005': InsufficientFunds,  # {"code":-5005,"msg":"The residual balances of %s is too low, Please re-choose."}
+                    '-5006': BadRequest,  # {"code":-5006,"msg":"Only transfer once in 24 hours."}
+                    '-5007': BadRequest,  # {"code":-5007,"msg":"Quantity must be greater than zero."}
+                    '-5008': InsufficientFunds,  # {"code":-5008,"msg":"Insufficient amount of returnable assets."}
+                    '-5009': BadRequest,  # {"code":-5009,"msg":"Product does not exist."}
+                    '-5010': ExchangeError,  # {"code":-5010,"msg":"Asset transfer fail."}
+                    '-5011': BadRequest,  # {"code":-5011,"msg":"future account not exists."}
+                    '-5012': ExchangeError,  # {"code":-5012,"msg":"Asset transfer is in pending."}
+                    '-5013': InsufficientFunds,  # {"code":-5013,"msg":"Asset transfer failed: insufficient balance""}  # undocumented
+                    '-5021': BadRequest,  # {"code":-5021,"msg":"This parent sub have no relation"}
+                    '-6001': BadRequest,  # {"code":-6001,"msg":"Daily product not exists."}
+                    '-6003': BadRequest,  # {"code":-6003,"msg":"Product not exist or you don't have permission"}
+                    '-6004': ExchangeError,  # {"code":-6004,"msg":"Product not in purchase status"}
+                    '-6005': InvalidOrder,  # {"code":-6005,"msg":"Smaller than min purchase limit"}
+                    '-6006': BadRequest,  # {"code":-6006,"msg":"Redeem amount error"}
+                    '-6007': BadRequest,  # {"code":-6007,"msg":"Not in redeem time"}
+                    '-6008': BadRequest,  # {"code":-6008,"msg":"Product not in redeem status"}
+                    '-6009': RateLimitExceeded,  # {"code":-6009,"msg":"Request frequency too high"}
+                    '-6011': BadRequest,  # {"code":-6011,"msg":"Exceeding the maximum num allowed to purchase per user"}
+                    '-6012': InsufficientFunds,  # {"code":-6012,"msg":"Balance not enough"}
+                    '-6013': ExchangeError,  # {"code":-6013,"msg":"Purchasing failed"}
+                    '-6014': BadRequest,  # {"code":-6014,"msg":"Exceed up-limit allowed to purchased"}
+                    '-6015': BadRequest,  # {"code":-6015,"msg":"Empty request body"}
+                    '-6016': BadRequest,  # {"code":-6016,"msg":"Parameter err"}
+                    '-6017': BadRequest,  # {"code":-6017,"msg":"Not in whitelist"}
+                    '-6018': BadRequest,  # {"code":-6018,"msg":"Asset not enough"}
+                    '-6019': AuthenticationError,  # {"code":-6019,"msg":"Need confirm"}
+                    '-6020': BadRequest,  # {"code":-6020,"msg":"Project not exists"}
+                    '-7001': BadRequest,  # {"code":-7001,"msg":"Date range is not supported."}
+                    '-7002': BadRequest,  # {"code":-7002,"msg":"Data request type is not supported."}
+                    '-10017': BadRequest,  # {"code":-10017,"msg":"Repay amount should not be larger than liability."}
+                    '-11008': InsufficientFunds,  # {"code":-11008,"msg":"Exceeding the account's maximum borrowable limit."}  # undocumented
+                    '-12014': RateLimitExceeded,  # {"code":-12014,"msg":"More than 1 request in 3 seconds"}
+                    '-13000': BadRequest,  # {"code":-13000,"msg":"Redeption of the token is forbiden now"}
+                    '-13001': BadRequest,  # {"code":-13001,"msg":"Exceeds individual 24h redemption limit of the token"}
+                    '-13002': BadRequest,  # {"code":-13002,"msg":"Exceeds total 24h redemption limit of the token"}
+                    '-13003': BadRequest,  # {"code":-13003,"msg":"Subscription of the token is forbiden now"}
+                    '-13004': BadRequest,  # {"code":-13004,"msg":"Exceeds individual 24h subscription limit of the token"}
+                    '-13005': BadRequest,  # {"code":-13005,"msg":"Exceeds total 24h subscription limit of the token"}
+                    '-13006': InvalidOrder,  # {"code":-13006,"msg":"Subscription amount is too small"}
+                    '-13007': AuthenticationError,  # {"code":-13007,"msg":"The Agreement is not signed"}
+                    '100001003': BadRequest,  # {"code":100001003,"msg":"Verification failed"}  # undocumented
                 },
                 'broad': {
                     'has no operation privilege': PermissionDenied,
@@ -968,12 +1168,6 @@ class binance(Exchange):
             method = 'dapiPublicGetTime'
         response = getattr(self, method)(query)
         return self.safe_integer(response, 'serverTime')
-
-    def load_time_difference(self, params={}):
-        serverTime = self.fetch_time(params)
-        after = self.milliseconds()
-        self.options['timeDifference'] = after - serverTime
-        return self.options['timeDifference']
 
     def fetch_currencies(self, params={}):
         fetchCurrenciesEnabled = self.safe_value(self.options, 'fetchCurrencies')
@@ -1102,6 +1296,8 @@ class binance(Exchange):
                 'precision': precision,
                 'info': entry,
                 'active': active,
+                'deposit': isDepositEnabled,
+                'withdraw': isWithdrawEnabled,
                 'networks': networkList,
                 'fee': fee,
                 'fees': fees,
@@ -1305,7 +1501,7 @@ class binance(Exchange):
             contractSize = None
             fees = self.fees
             if future or delivery:
-                contractSize = self.safe_string(market, 'contractSize', '1')
+                contractSize = self.safe_number(market, 'contractSize', self.parse_number('1'))
                 fees = self.fees[type]
             maker = fees['trading']['maker']
             taker = fees['trading']['taker']
@@ -1383,6 +1579,62 @@ class binance(Exchange):
                 entry['limits']['cost']['min'] = self.safe_number_2(filter, 'minNotional', 'notional')
             result.append(entry)
         return result
+
+    def parse_balance(self, response, type=None):
+        result = {
+            'info': response,
+        }
+        timestamp = None
+        if (type == 'spot') or (type == 'margin'):
+            timestamp = self.safe_integer(response, 'updateTime')
+            balances = self.safe_value_2(response, 'balances', 'userAssets', [])
+            for i in range(0, len(balances)):
+                balance = balances[i]
+                currencyId = self.safe_string(balance, 'asset')
+                code = self.safe_currency_code(currencyId)
+                account = self.account()
+                account['free'] = self.safe_string(balance, 'free')
+                account['used'] = self.safe_string(balance, 'locked')
+                result[code] = account
+        elif type == 'savings':
+            positionAmountVos = self.safe_value(response, 'positionAmountVos')
+            for i in range(0, len(positionAmountVos)):
+                entry = positionAmountVos[i]
+                currencyId = self.safe_string(entry, 'asset')
+                code = self.safe_currency_code(currencyId)
+                account = self.account()
+                usedAndTotal = self.safe_string(entry, 'amount')
+                account['total'] = usedAndTotal
+                account['used'] = usedAndTotal
+                result[code] = account
+        elif type == 'funding':
+            for i in range(0, len(response)):
+                entry = response[i]
+                account = self.account()
+                currencyId = self.safe_string(entry, 'asset')
+                code = self.safe_currency_code(currencyId)
+                account['free'] = self.safe_string(entry, 'free')
+                frozen = self.safe_string(entry, 'freeze')
+                withdrawing = self.safe_string(entry, 'withdrawing')
+                locked = self.safe_string(entry, 'locked')
+                account['used'] = Precise.string_add(frozen, Precise.string_add(locked, withdrawing))
+                result[code] = account
+        else:
+            balances = response
+            if not isinstance(response, list):
+                balances = self.safe_value(response, 'assets', [])
+            for i in range(0, len(balances)):
+                balance = balances[i]
+                currencyId = self.safe_string(balance, 'asset')
+                code = self.safe_currency_code(currencyId)
+                account = self.account()
+                account['free'] = self.safe_string(balance, 'availableBalance')
+                account['used'] = self.safe_string(balance, 'initialMargin')
+                account['total'] = self.safe_string_2(balance, 'marginBalance', 'balance')
+                result[code] = account
+        result['timestamp'] = timestamp
+        result['datetime'] = self.iso8601(timestamp)
+        return self.safe_balance(result)
 
     def fetch_balance(self, params={}):
         self.load_markets()
@@ -1586,60 +1838,7 @@ class binance(Exchange):
         #       }
         #     ]
         #
-        result = {
-            'info': response,
-        }
-        timestamp = None
-        if (type == 'spot') or (type == 'margin'):
-            timestamp = self.safe_integer(response, 'updateTime')
-            balances = self.safe_value_2(response, 'balances', 'userAssets', [])
-            for i in range(0, len(balances)):
-                balance = balances[i]
-                currencyId = self.safe_string(balance, 'asset')
-                code = self.safe_currency_code(currencyId)
-                account = self.account()
-                account['free'] = self.safe_string(balance, 'free')
-                account['used'] = self.safe_string(balance, 'locked')
-                result[code] = account
-        elif type == 'savings':
-            positionAmountVos = self.safe_value(response, 'positionAmountVos')
-            for i in range(0, len(positionAmountVos)):
-                entry = positionAmountVos[i]
-                currencyId = self.safe_string(entry, 'asset')
-                code = self.safe_currency_code(currencyId)
-                account = self.account()
-                usedAndTotal = self.safe_string(entry, 'amount')
-                account['total'] = usedAndTotal
-                account['used'] = usedAndTotal
-                result[code] = account
-        elif type == 'funding':
-            for i in range(0, len(response)):
-                entry = response[i]
-                account = self.account()
-                currencyId = self.safe_string(entry, 'asset')
-                code = self.safe_currency_code(currencyId)
-                account['free'] = self.safe_string(entry, 'free')
-                frozen = self.safe_string(entry, 'freeze')
-                withdrawing = self.safe_string(entry, 'withdrawing')
-                locked = self.safe_string(entry, 'locked')
-                account['used'] = Precise.string_add(frozen, Precise.string_add(locked, withdrawing))
-                result[code] = account
-        else:
-            balances = response
-            if not isinstance(response, list):
-                balances = self.safe_value(response, 'assets', [])
-            for i in range(0, len(balances)):
-                balance = balances[i]
-                currencyId = self.safe_string(balance, 'asset')
-                code = self.safe_currency_code(currencyId)
-                account = self.account()
-                account['free'] = self.safe_string(balance, 'availableBalance')
-                account['used'] = self.safe_string(balance, 'initialMargin')
-                account['total'] = self.safe_string_2(balance, 'marginBalance', 'balance')
-                result[code] = account
-        result['timestamp'] = timestamp
-        result['datetime'] = self.iso8601(timestamp)
-        return self.parse_balance(result)
+        return self.parse_balance(response, type)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -1665,8 +1864,7 @@ class binance(Exchange):
         #         "bids":[
         #             ["2493.56","20.189"],
         #             ["2493.54","1.000"],
-        #             ["2493.51","0.005"],["2493.37","0.280"],["2493.31","0.865"],["2493.30","0.514"],["2493.29","2.309"],["2493.25","1.500"],["2493.23","0.012"],["2493.22","7.240"],["2493.21","3.349"],["2493.20","2.030"],["2493.19","58.118"],["2493.18","174.836"],["2493.17","14.436"],["2493.12","2.000"],["2493.09","3.232"],["2493.08","2.010"],["2493.07","2.000"],["2493.06","2.000"],["2493.05","2.684"],["2493.04","2.000"],["2493.03","2.000"],["2493.02","5.000"],["2493.01","2.000"],["2493.00","1.035"],["2492.99","8.546"],["2492.98","4.012"],["2492.96","40.937"],["2492.95","40.595"],["2492.94","21.051"],["2492.92","4.012"],["2492.91","0.200"],["2492.85","2.000"],["2492.83","24.929"],["2492.81","50.000"],["2492.80","0.030"],["2492.76","0.264"],["2492.73","32.098"],["2492.71","32.664"],["2492.70","4.228"],["2492.65","1.230"],["2492.61","5.598"],["2492.60","34.786"],["2492.58","10.393"],["2492.54","4.543"],["2492.50","0.400"],["2492.49","0.600"],["2492.48","4.941"],["2492.45","1.207"],["2492.43","4.878"],["2492.40","4.762"],["2492.39","36.489"],["2492.37","3.000"],["2492.36","4.882"],["2492.33","28.117"],["2492.29","0.490"],["2492.28","76.365"],["2492.27","0.200"],["2492.23","3.804"],["2492.22","1.000"],["2492.19","20.011"],["2492.17","13.500"],["2492.16","4.058"],["2492.14","35.673"],["2492.13","1.915"],["2492.12","76.896"],["2492.10","8.050"],["2492.01","16.615"],["2492.00","10.335"],["2491.95","5.880"],["2491.93","10.000"],["2491.92","3.916"],["2491.90","0.795"],["2491.87","22.000"],["2491.85","1.260"],["2491.84","4.014"],["2491.83","6.668"],["2491.73","0.855"],["2491.72","7.572"],["2491.71","7.000"],["2491.68","3.916"],["2491.66","2.500"],["2491.64","4.945"],["2491.63","2.302"],["2491.62","4.012"],["2491.61","16.170"],["2491.60","0.793"],["2491.59","0.403"],["2491.57","17.445"],["2491.56","88.177"],["2491.53","10.000"],["2491.47","0.013"],["2491.45","0.157"],["2491.44","11.733"],["2491.39","3.593"],["2491.38","3.570"],["2491.36","28.077"],["2491.35","0.808"],["2491.30","0.065"],["2491.29","4.880"],["2491.27","22.000"],["2491.24","9.021"],["2491.23","68.393"],["2491.22","0.050"],["2491.21","1.316"],["2491.20","4.000"],["2491.19","0.108"],["2491.18","0.498"],["2491.17","5.000"],["2491.14","10.000"],["2491.13","0.383"],["2491.12","125.959"],["2491.10","0.870"],["2491.08","10.518"],["2491.05","54.743"],["2491.01","7.980"],["2490.96","3.916"],["2490.95","0.135"],["2490.91","0.140"],["2490.89","8.424"],["2490.88","5.930"],["2490.84","1.208"],["2490.83","2.005"],["2490.82","5.517"],["2490.81","73.707"],["2490.80","1.042"],["2490.79","9.626"],["2490.72","3.916"],["2490.70","0.148"],["2490.69","0.403"],["2490.68","0.012"],["2490.67","21.887"],["2490.66","0.008"],["2490.64","11.500"],["2490.61","0.005"],["2490.58","68.175"],["2490.55","0.218"],["2490.54","14.132"],["2490.53","5.157"],["2490.50","0.018"],["2490.49","9.216"],["2490.48","3.979"],["2490.47","1.884"],["2490.44","0.003"],["2490.36","14.132"],["2490.35","2.008"],["2490.34","0.200"],["2490.33","0.015"],["2490.30","0.065"],["2490.29","5.500"],["2490.28","24.203"],["2490.26","4.373"],["2490.25","0.026"],["2490.24","4.000"],["2490.23","177.628"],["2490.22","14.132"],["2490.21","0.181"],["2490.20","0.645"],["2490.19","9.024"],["2490.18","0.108"],["2490.17","0.085"],["2490.16","0.077"],["2490.14","0.275"],["2490.10","0.080"],["2490.07","0.015"],["2490.04","6.056"],["2490.00","6.796"],["2489.98","0.005"],["2489.97","0.258"],["2489.96","10.084"],["2489.95","1.202"],["2489.91","10.121"],["2489.90","10.084"],["2489.88","0.040"],["2489.87","0.004"],["2489.85","0.003"],["2489.76","3.916"],["2489.73","10.084"],["2489.71","0.272"],["2489.70","12.834"],["2489.67","0.403"],["2489.66","0.362"],["2489.64","0.738"],["2489.63","193.236"],["2489.62","14.152"],["2489.61","0.157"],["2489.59","4.011"],["2489.57","0.015"],["2489.55","0.046"],["2489.52","3.921"],["2489.51","0.005"],["2489.45","80.000"],["2489.44","0.649"],["2489.43","10.088"],["2489.39","0.009"],["2489.37","14.132"],["2489.35","72.262"],["2489.34","10.084"],["2489.33","14.136"],["2489.32","23.953"],["2489.30","0.065"],["2489.28","8.136"],["2489.24","8.022"],["2489.19","14.132"],["2489.18","0.085"],["2489.17","0.108"],["2489.14","10.084"],["2489.13","3.142"],["2489.12","77.827"],["2489.11","10.084"],["2489.10","0.080"],["2489.09","50.024"],["2489.04","3.916"],["2489.03","0.008"],["2489.01","10.084"],["2488.99","0.135"],["2488.98","0.187"],["2488.96","0.324"],["2488.92","0.064"],["2488.85","16.056"],["2488.83","14.132"],["2488.80","3.916"],["2488.79","10.084"],["2488.77","4.414"],["2488.76","0.005"],["2488.75","13.685"],["2488.73","0.020"],["2488.69","0.157"],["2488.60","80.000"],["2488.58","10.164"],["2488.57","0.004"],["2488.56","3.933"],["2488.54","3.311"],["2488.51","12.814"],["2488.50","80.099"],["2488.48","0.684"],["2488.44","0.024"],["2488.42","68.180"],["2488.39","4.412"],["2488.38","26.138"],["2488.34","44.134"],["2488.32","8.014"],["2488.30","0.065"],["2488.29","0.009"],["2488.27","4.513"],["2488.26","4.222"],["2488.25","80.000"],["2488.23","0.007"],["2488.22","0.281"],["2488.19","0.100"],["2488.18","80.100"],["2488.17","80.000"],["2488.16","8.197"],["2488.15","79.184"],["2488.13","0.025"],["2488.11","0.050"],["2488.10","0.080"],["2488.08","3.919"],["2488.04","40.103"],["2488.03","0.120"],["2488.02","0.008"],["2488.01","0.140"],["2488.00","0.406"],["2487.99","0.384"],["2487.98","0.060"],["2487.96","8.010"],["2487.94","0.246"],["2487.93","0.020"],["2487.91","0.136"],["2487.87","0.403"],["2487.84","17.910"],["2487.81","0.005"],["2487.80","0.073"],["2487.74","36.000"],["2487.73","3.225"],["2487.72","0.018"],["2487.71","0.319"],["2487.70","0.006"],["2487.66","0.003"],["2487.64","0.003"],["2487.63","0.008"],["2487.62","0.040"],["2487.60","3.916"],["2487.54","0.805"],["2487.52","0.022"],["2487.51","0.003"],["2487.50","0.051"],["2487.49","6.081"],["2487.47","80.015"],["2487.46","4.735"],["2487.45","30.000"],["2487.41","0.096"],["2487.40","0.078"],["2487.39","0.103"],["2487.37","2.279"],["2487.36","8.152"],["2487.35","2.145"],["2487.32","12.816"],["2487.31","10.023"],["2487.30","0.157"],["2487.27","0.005"],["2487.26","4.010"],["2487.25","0.008"],["2487.24","0.003"],["2487.23","0.014"],["2487.20","0.085"],["2487.17","0.011"],["2487.14","3.217"],["2487.12","3.916"],["2487.11","0.300"],["2487.10","0.088"],["2487.08","10.097"],["2487.07","1.467"],["2487.04","0.600"],["2487.01","18.363"],["2487.00","0.292"],["2486.99","0.014"],["2486.98","0.144"],["2486.97","0.443"],["2486.92","0.005"],["2486.91","0.016"],["2486.89","3.364"],["2486.88","4.166"],["2486.84","24.306"],["2486.83","0.181"],["2486.81","0.015"],["2486.80","0.082"],["2486.79","0.007"],["2486.76","0.011"],["2486.74","0.050"],["2486.73","0.782"],["2486.72","0.004"],["2486.69","0.003"],["2486.68","8.018"],["2486.66","10.004"],["2486.65","40.391"],["2486.64","3.916"],["2486.61","0.489"],["2486.60","0.196"],["2486.57","0.396"],["2486.55","4.015"],["2486.51","3.000"],["2486.50","0.003"],["2486.48","0.005"],["2486.47","0.010"],["2486.45","4.011"],["2486.44","0.602"],["2486.43","0.566"],["2486.42","3.140"],["2486.40","3.958"],["2486.39","0.003"],["2486.34","0.010"],["2486.31","6.281"],["2486.27","0.005"],["2486.26","0.004"],["2486.23","10.088"],["2486.22","0.015"],["2486.17","0.030"],["2486.16","3.916"],["2486.15","0.020"],["2486.13","13.130"],["2486.12","82.414"],["2486.11","0.244"],["2486.10","0.132"],["2486.08","0.720"],["2486.06","0.385"],["2486.01","0.004"],["2486.00","2.359"],["2485.99","154.159"],["2485.98","20.054"],["2485.96","1.000"],["2485.95","0.190"],["2485.92","4.463"],["2485.90","1.557"],["2485.87","0.402"],["2485.85","0.114"],["2485.81","0.900"],["2485.76","4.700"],["2485.75","0.300"],["2485.74","0.196"],["2485.73","4.010"],["2485.72","0.323"],["2485.70","0.263"],["2485.69","0.261"],["2485.68","3.688"],["2485.67","0.005"],["2485.64","1.216"],["2485.63","0.005"],["2485.62","0.015"],["2485.61","0.033"],["2485.60","0.004"],["2485.58","2.012"],["2485.56","0.020"],["2485.54","0.699"],["2485.52","0.003"],["2485.51","1.830"],["2485.48","5.964"],["2485.47","0.015"],["2485.44","7.251"],["2485.43","0.006"],["2485.42","0.644"],["2485.40","8.026"],["2485.38","0.489"],["2485.36","0.014"],["2485.35","0.005"],["2485.31","1.507"],["2485.30","2.107"],["2485.29","0.039"],["2485.28","0.642"],["2485.26","1.990"],["2485.25","4.996"],["2485.23","0.003"],["2485.22","0.277"],["2485.21","0.121"],["2485.20","3.952"],["2485.18","0.006"],["2485.17","0.043"],["2485.15","4.008"],["2485.14","4.434"],["2485.13","1.003"],["2485.05","0.204"],["2485.04","0.254"],["2485.02","5.000"],["2485.01","0.050"],["2485.00","80.821"],["2484.96","3.941"],["2484.95","10.023"],["2484.94","13.935"],["2484.92","0.059"],["2484.90","150.000"],["2484.89","0.004"],["2484.88","150.127"],["2484.87","0.004"],["2484.85","0.100"],["2484.83","0.006"],["2484.82","0.030"],["2484.81","1.246"],["2484.80","0.003"],["2484.79","0.045"],["2484.77","0.003"],["2484.74","0.036"],["2484.72","3.919"],["2484.70","0.134"],["2484.68","1.111"],["2484.66","76.955"],["2484.60","2.580"],["2484.59","31.432"],["2484.58","1.468"],["2484.55","1.153"],["2484.54","0.265"],["2484.53","20.024"],["2484.51","1.047"],["2484.50","0.818"],["2484.49","0.022"],["2484.48","3.887"],["2484.46","0.048"],["2484.45","0.224"],["2484.44","0.174"],["2484.43","223.079"],["2484.42","0.014"],["2484.41","1.115"],["2484.39","26.090"],["2484.38","0.066"],["2484.37","0.121"],["2484.34","0.255"],["2484.33","23.968"],["2484.29","0.085"],["2484.27","1.128"],["2484.26","1.456"],["2484.24","3.916"],["2484.23","28.126"],["2484.22","1.329"],["2484.19","2.015"],["2484.18","0.263"],["2484.15","15.489"],["2484.14","1.135"],["2484.13","0.572"],["2484.12","8.032"],["2484.11","0.021"],["2484.09","0.059"],["2484.08","0.038"],["2484.07","0.147"],["2484.05","24.156"],["2484.04","0.008"],["2484.01","1.184"],["2484.00","4.641"],["2483.99","0.006"],["2483.97","0.294"],["2483.96","0.424"],["2483.94","3.660"],["2483.93","2.067"],["2483.92","0.008"],["2483.89","0.141"],["2483.88","1.089"],
-        #             ["2483.87","110.000"],["2483.85","4.018"],["2483.81","150.077"],["2483.80","0.003"],["2483.77","0.020"]
+        #             ["2493.51","0.005"]
         #         ],
         #         "asks":[
         #             ["2493.57","0.877"],
@@ -1890,11 +2088,12 @@ class binance(Exchange):
             # It didn't work before without the endTime
             # https://github.com/ccxt/ccxt/issues/8454
             #
-            # if since > 0:
-            #     endTime = self.sum(since, limit * duration * 1000 - 1)
-            #     now = self.milliseconds()
-            #     request['endTime'] = min(now, endTime)
-            # }
+            if market['inverse']:
+                if since > 0:
+                    duration = self.parse_timeframe(timeframe)
+                    endTime = self.sum(since, limit * duration * 1000 - 1)
+                    now = self.milliseconds()
+                    request['endTime'] = min(now, endTime)
         method = 'publicGetKlines'
         if price == 'mark':
             if market['inverse']:
@@ -2295,7 +2494,7 @@ class binance(Exchange):
             type = 'limit'
         stopPriceString = self.safe_string(order, 'stopPrice')
         stopPrice = self.parse_number(self.omit_zero(stopPriceString))
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -2568,7 +2767,8 @@ class binance(Exchange):
             market = self.market(symbol)
             request['symbol'] = market['id']
             defaultType = self.safe_string_2(self.options, 'fetchOpenOrders', 'defaultType', 'spot')
-            type = self.safe_string(params, 'type', defaultType)
+            marketType = market['type'] if ('type' in market) else defaultType
+            type = self.safe_string(params, 'type', marketType)
             query = self.omit(params, 'type')
         elif self.options['warnOnFetchOpenOrdersWithoutSymbol']:
             symbols = self.symbols
@@ -2646,13 +2846,26 @@ class binance(Exchange):
         else:
             return response
 
+    def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchOrderTrades() requires a symbol argument')
+        self.load_markets()
+        market = self.market(symbol)
+        type = self.safe_string(params, 'type', market['type'])
+        params = self.omit(params, 'type')
+        if type != 'spot':
+            raise NotSupported(self.id + ' fetchOrderTrades() supports spot markets only')
+        request = {
+            'orderId': id,
+        }
+        return self.fetch_my_trades(symbol, since, limit, self.extend(request, params))
+
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
             raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
-        defaultType = self.safe_string_2(self.options, 'fetchMyTrades', 'defaultType', 'spot')
-        type = self.safe_string(params, 'type', defaultType)
+        type = self.safe_string(params, 'type', market['type'])
         params = self.omit(params, 'type')
         method = None
         if type == 'spot':
@@ -3128,12 +3341,14 @@ class binance(Exchange):
         updated = self.safe_integer_2(transaction, 'successTime', 'updateTime')
         internal = self.safe_integer(transaction, 'transferType', False)
         internal = True if internal else False
+        network = self.safe_string(transaction, 'network')
         return {
             'info': transaction,
             'id': id,
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': network,
             'address': address,
             'addressTo': address,
             'addressFrom': None,
@@ -3851,7 +4066,6 @@ class binance(Exchange):
         estimatedSettlePrice = self.safe_number(premiumIndex, 'estimatedSettlePrice')
         nextFundingRate = self.safe_number(premiumIndex, 'lastFundingRate')
         nextFundingTime = self.safe_integer(premiumIndex, 'nextFundingTime')
-        previousFundingTime = nextFundingTime - (8 * 3600000)
         return {
             'info': premiumIndex,
             'symbol': symbol,
@@ -3863,9 +4077,9 @@ class binance(Exchange):
             'datetime': self.iso8601(timestamp),
             'previousFundingRate': None,
             'nextFundingRate': nextFundingRate,
-            'previousFundingTimestamp': previousFundingTime,  # subtract 8 hours
+            'previousFundingTimestamp': None,
             'nextFundingTimestamp': nextFundingTime,
-            'previousFundingDatetime': self.iso8601(previousFundingTime),
+            'previousFundingDatetime': None,
             'nextFundingDatetime': self.iso8601(nextFundingTime),
         }
 
@@ -3950,6 +4164,7 @@ class binance(Exchange):
         rational = (1000 % leverage) == 0
         if not rational:
             initialMarginPercentageString = Precise.string_div(Precise.string_add(initialMarginPercentageString, '1e-8'), '1', 8)
+        # as oppose to notionalValue
         usdm = ('notional' in position)
         maintenanceMarginString = self.safe_string(position, 'maintMargin')
         maintenanceMargin = self.parse_number(maintenanceMarginString)
@@ -3999,6 +4214,8 @@ class binance(Exchange):
         percentage = None
         liquidationPriceStringRaw = None
         liquidationPrice = None
+        contractSize = self.safe_value(market, 'contractSize')
+        contractSizeString = self.number_to_string(contractSize)
         if notionalFloat == 0.0:
             entryPrice = None
         else:
@@ -4035,7 +4252,7 @@ class binance(Exchange):
                 else:
                     onePlusMaintenanceMarginPercentageString = Precise.string_sub('-1', maintenanceMarginPercentageString)
                     entryPriceSignString = Precise.string_mul('-1', entryPriceSignString)
-                size = Precise.string_mul(contractsStringAbs, market['contractSize'])
+                size = Precise.string_mul(contractsStringAbs, contractSizeString)
                 leftSide = Precise.string_mul(size, onePlusMaintenanceMarginPercentageString)
                 rightSide = Precise.string_sub(Precise.string_mul(Precise.string_div('1', entryPriceSignString), size), walletBalance)
                 liquidationPriceStringRaw = Precise.string_div(leftSide, rightSide)
@@ -4068,7 +4285,7 @@ class binance(Exchange):
             'leverage': self.parse_number(leverageString),
             'unrealizedPnl': unrealizedPnl,
             'contracts': contracts,
-            'contractSize': self.parse_number(market['contractSize']),
+            'contractSize': contractSize,
             'marginRatio': marginRatio,
             'liquidationPrice': liquidationPrice,
             'markPrice': None,
@@ -4151,9 +4368,13 @@ class binance(Exchange):
             side = 'short'
         entryPriceString = self.safe_string(position, 'entryPrice')
         entryPrice = self.parse_number(entryPriceString)
+        contractSize = self.safe_value(market, 'contractSize')
+        contractSizeString = self.number_to_string(contractSize)
+        # as oppose to notionalValue
+        linear = ('notional' in position)
         if marginType == 'cross':
             # calculate collateral
-            if market['linear']:
+            if linear:
                 # walletBalance = (liquidationPrice * (±1 + mmp) ± entryPrice) * contracts
                 onePlusMaintenanceMarginPercentageString = None
                 entryPriceSignString = entryPriceString
@@ -4174,7 +4395,7 @@ class binance(Exchange):
                 else:
                     onePlusMaintenanceMarginPercentageString = Precise.string_sub('-1', maintenanceMarginPercentageString)
                     entryPriceSignString = Precise.string_mul('-1', entryPriceSignString)
-                leftSide = Precise.string_mul(contractsAbs, market['contractSize'])
+                leftSide = Precise.string_mul(contractsAbs, contractSizeString)
                 rightSide = Precise.string_sub(Precise.string_div('1', entryPriceSignString), Precise.string_div(onePlusMaintenanceMarginPercentageString, liquidationPriceString))
                 collateralString = Precise.string_div(Precise.string_mul(leftSide, rightSide), '1', market['precision']['base'])
         else:
@@ -4206,7 +4427,7 @@ class binance(Exchange):
             'info': position,
             'symbol': symbol,
             'contracts': contracts,
-            'contractSize': self.parse_number(market['contractSize']),
+            'contractSize': contractSize,
             'unrealizedPnl': unrealizedPnl,
             'leverage': self.parse_number(leverageString),
             'liquidationPrice': liquidationPrice,
@@ -4292,7 +4513,7 @@ class binance(Exchange):
     def fetch_positions_risk(self, symbols=None, params={}):
         if symbols is not None:
             if not isinstance(symbols, list):
-                raise ArgumentsRequired(self.id + ' fetchPositions requires an array argument for symbols')
+                raise ArgumentsRequired(self.id + ' fetchPositionsRisk requires an array argument for symbols')
         self.load_markets()
         self.load_leverage_brackets()
         request = {}
@@ -4303,10 +4524,64 @@ class binance(Exchange):
         params = self.omit(params, 'type')
         if (type == 'future') or (type == 'linear'):
             method = 'fapiPrivateGetPositionRisk'
+            #  ### Response examples  ###
+            #
+            # For One-way position mode:
+            #     [
+            #         {
+            #             "entryPrice": "0.00000",
+            #             "marginType": "isolated",
+            #             "isAutoAddMargin": "false",
+            #             "isolatedMargin": "0.00000000",
+            #             "leverage": "10",
+            #             "liquidationPrice": "0",
+            #             "markPrice": "6679.50671178",
+            #             "maxNotionalValue": "20000000",
+            #             "positionAmt": "0.000",
+            #             "symbol": "BTCUSDT",
+            #             "unRealizedProfit": "0.00000000",
+            #             "positionSide": "BOTH",
+            #             "updateTime": 0
+            #        }
+            #     ]
+            #
+            # For Hedge position mode:
+            #     [
+            #         {
+            #             "entryPrice": "6563.66500",
+            #             "marginType": "isolated",
+            #             "isAutoAddMargin": "false",
+            #             "isolatedMargin": "15517.54150468",
+            #             "leverage": "10",
+            #             "liquidationPrice": "5930.78",
+            #             "markPrice": "6679.50671178",
+            #             "maxNotionalValue": "20000000",
+            #             "positionAmt": "20.000",
+            #             "symbol": "BTCUSDT",
+            #             "unRealizedProfit": "2316.83423560"
+            #             "positionSide": "LONG",
+            #             "updateTime": 1625474304765
+            #         },
+            #         {
+            #             "entryPrice": "0.00000",
+            #             "marginType": "isolated",
+            #             "isAutoAddMargin": "false",
+            #             "isolatedMargin": "5413.95799991",
+            #             "leverage": "10",
+            #             "liquidationPrice": "7189.95",
+            #             "markPrice": "6679.50671178",
+            #             "maxNotionalValue": "20000000",
+            #             "positionAmt": "-10.000",
+            #             "symbol": "BTCUSDT",
+            #             "unRealizedProfit": "-1156.46711780",
+            #             "positionSide": "SHORT",
+            #             "updateTime": 0
+            #         }
+            #     ]
         elif (type == 'delivery') or (type == 'inverse'):
             method = 'dapiPrivateGetPositionRisk'
         else:
-            raise NotSupported(self.id + ' fetchIsolatedPositions() supports linear and inverse contracts only')
+            raise NotSupported(self.id + ' fetchPositionsRisk() supports linear and inverse contracts only')
         response = getattr(self, method)(self.extend(request, params))
         result = []
         for i in range(0, len(response)):
@@ -4447,7 +4722,7 @@ class binance(Exchange):
                     body = self.urlencode(params)
             else:
                 raise AuthenticationError(self.id + ' userDataStream endpoint requires `apiKey` credential')
-        elif (api == 'private') or (api == 'sapi') or (api == 'wapi' and path != 'systemStatus') or (api == 'dapiPrivate') or (api == 'dapiPrivateV2') or (api == 'fapiPrivate') or (api == 'fapiPrivateV2'):
+        elif (api == 'private') or (api == 'sapi' and path != 'system/status') or (api == 'wapi' and path != 'systemStatus') or (api == 'dapiPrivate') or (api == 'dapiPrivateV2') or (api == 'fapiPrivate') or (api == 'fapiPrivateV2'):
             self.check_required_credentials()
             query = None
             recvWindow = self.safe_integer(self.options, 'recvWindow', 5000)
@@ -4533,7 +4808,9 @@ class binance(Exchange):
             raise ExchangeError(self.id + ' ' + body)
 
     def calculate_rate_limiter_cost(self, api, method, path, params, config={}, context={}):
-        if ('noSymbol' in config) and not ('symbol' in params):
+        if ('noCoin' in config) and not ('coin' in params):
+            return config['noCoin']
+        elif ('noSymbol' in config) and not ('symbol' in params):
             return config['noSymbol']
         elif ('noPoolId' in config) and not ('poolId' in params):
             return config['noPoolId']
@@ -4634,3 +4911,44 @@ class binance(Exchange):
             'datetime': self.iso8601(timestamp),
             'info': response,
         }
+
+    def fetch_borrow_rate_history(self, code, since=None, limit=None, params={}):
+        self.load_markets()
+        if limit is None:
+            limit = 93
+        elif limit > 93:
+            # Binance API says the limit is 100, but "Illegal characters found in a parameter." is returned when limit is > 93
+            raise BadRequest(self.id + ' fetchBorrowRateHistory limit parameter cannot exceed 92')
+        currency = self.currency(code)
+        request = {
+            'asset': currency['id'],
+            'limit': limit,
+        }
+        if since is not None:
+            request['startTime'] = since
+            endTime = self.sum(since, limit * 86400000) - 1  # required when startTime is further than 93 days in the past
+            now = self.milliseconds()
+            request['endTime'] = min(endTime, now)  # cannot have an endTime later than current time
+        response = self.sapiGetMarginInterestRateHistory(self.extend(request, params))
+        #
+        #     [
+        #         {
+        #             "asset": "USDT",
+        #             "timestamp": 1638230400000,
+        #             "dailyInterestRate": "0.0006",
+        #             "vipLevel": 0
+        #         },
+        #     ]
+        #
+        result = []
+        for i in range(0, len(response)):
+            item = response[i]
+            timestamp = self.safe_number(item, 'timestamp')
+            result.append({
+                'currency': code,
+                'rate': self.safe_number(item, 'dailyInterestRate'),
+                'timestamp': timestamp,
+                'datetime': self.iso8601(timestamp),
+                'info': item,
+            })
+        return result

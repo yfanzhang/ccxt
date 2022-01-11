@@ -4,7 +4,6 @@
 
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, ArgumentsRequired, InvalidOrder, OrderNotFound, RateLimitExceeded, InsufficientFunds, AuthenticationError } = require ('./base/errors');
-const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -110,24 +109,24 @@ module.exports = class coinmate extends Exchange {
                     'taker': 0.25 / 100,
                     'tiers': {
                         'taker': [
-                            [0, 0.25 / 100],
-                            [10000, 0.23 / 100],
-                            [100000, 0.21 / 100],
-                            [250000, 0.20 / 100],
-                            [500000, 0.15 / 100],
-                            [1000000, 0.13 / 100],
-                            [3000000, 0.10 / 100],
-                            [15000000, 0.05 / 100],
+                            [ 0, 0.25 / 100 ],
+                            [ 10000, 0.23 / 100 ],
+                            [ 100000, 0.21 / 100 ],
+                            [ 250000, 0.20 / 100 ],
+                            [ 500000, 0.15 / 100 ],
+                            [ 1000000, 0.13 / 100 ],
+                            [ 3000000, 0.10 / 100 ],
+                            [ 15000000, 0.05 / 100 ],
                         ],
                         'maker': [
-                            [0, 0.12 / 100],
-                            [10000, 0.11 / 100],
-                            [1000000, 0.10 / 100],
-                            [250000, 0.08 / 100],
-                            [500000, 0.05 / 100],
-                            [1000000, 0.03 / 100],
-                            [3000000, 0.02 / 100],
-                            [15000000, 0],
+                            [ 0, 0.12 / 100 ],
+                            [ 10000, 0.11 / 100 ],
+                            [ 1000000, 0.10 / 100 ],
+                            [ 250000, 0.08 / 100 ],
+                            [ 500000, 0.05 / 100 ],
+                            [ 1000000, 0.03 / 100 ],
+                            [ 3000000, 0.02 / 100 ],
+                            [ 15000000, 0 ],
                         ],
                     },
                 },
@@ -137,31 +136,31 @@ module.exports = class coinmate extends Exchange {
                         'taker': 0.15 / 100,
                         'tiers': {
                             'taker': [
-                                [0, 0.15 / 100],
-                                [10000, 0.14 / 100],
-                                [100000, 0.13 / 100],
-                                [250000, 0.12 / 100],
-                                [500000, 0.11 / 100],
-                                [1000000, 0.1 / 100],
-                                [3000000, 0.08 / 100],
-                                [15000000, 0.05 / 100],
+                                [ 0, 0.15 / 100 ],
+                                [ 10000, 0.14 / 100 ],
+                                [ 100000, 0.13 / 100 ],
+                                [ 250000, 0.12 / 100 ],
+                                [ 500000, 0.11 / 100 ],
+                                [ 1000000, 0.1 / 100 ],
+                                [ 3000000, 0.08 / 100 ],
+                                [ 15000000, 0.05 / 100 ],
                             ],
                             'maker': [
-                                [0, 0.05 / 100],
-                                [10000, 0.04 / 100],
-                                [1000000, 0.03 / 100],
-                                [250000, 0.02 / 100],
-                                [500000, 0],
-                                [1000000, 0],
-                                [3000000, 0],
-                                [15000000, 0],
+                                [ 0, 0.05 / 100 ],
+                                [ 10000, 0.04 / 100 ],
+                                [ 1000000, 0.03 / 100 ],
+                                [ 250000, 0.02 / 100 ],
+                                [ 500000, 0 ],
+                                [ 1000000, 0 ],
+                                [ 3000000, 0 ],
+                                [ 15000000, 0 ],
                             ],
                         },
                     },
                 },
             },
             'options': {
-                'promotionalMarkets': ['ETH/EUR', 'ETH/CZK', 'ETH/BTC', 'XRP/EUR', 'XRP/CZK', 'XRP/BTC', 'DASH/EUR', 'DASH/CZK', 'DASH/BTC', 'BCH/EUR', 'BCH/CZK', 'BCH/BTC'],
+                'promotionalMarkets': [ 'ETH/EUR', 'ETH/CZK', 'ETH/BTC', 'XRP/EUR', 'XRP/CZK', 'XRP/BTC', 'DASH/EUR', 'DASH/CZK', 'DASH/BTC', 'BCH/EUR', 'BCH/CZK', 'BCH/BTC' ],
             },
             'exceptions': {
                 'exact': {
@@ -251,9 +250,7 @@ module.exports = class coinmate extends Exchange {
         return result;
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privatePostBalances (params);
+    parseBalance (response) {
         const balances = this.safeValue (response, 'data');
         const result = { 'info': response };
         const currencyIds = Object.keys (balances);
@@ -267,7 +264,13 @@ module.exports = class coinmate extends Exchange {
             account['total'] = this.safeString (balance, 'balance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privatePostBalances (params);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -343,7 +346,7 @@ module.exports = class coinmate extends Exchange {
         return this.safeString (statuses, status, status);
     }
 
-    parseTransaction (item, currency = undefined) {
+    parseTransaction (transaction, currency = undefined) {
         //
         // deposits
         //
@@ -378,17 +381,18 @@ module.exports = class coinmate extends Exchange {
         //         destinationTag: null
         //     }
         //
-        const timestamp = this.safeInteger (item, 'timestamp');
-        const amount = this.safeNumber (item, 'amount');
-        const fee = this.safeNumber (item, 'fee');
-        const txid = this.safeString (item, 'txid');
-        const address = this.safeString (item, 'destination');
-        const tag = this.safeString (item, 'destinationTag');
-        const currencyId = this.safeString (item, 'amountCurrency');
+        const timestamp = this.safeInteger (transaction, 'timestamp');
+        const amount = this.safeNumber (transaction, 'amount');
+        const fee = this.safeNumber (transaction, 'fee');
+        const txid = this.safeString (transaction, 'txid');
+        const address = this.safeString (transaction, 'destination');
+        const tag = this.safeString (transaction, 'destinationTag');
+        const currencyId = this.safeString (transaction, 'amountCurrency');
         const code = this.safeCurrencyCode (currencyId, currency);
-        const type = this.safeStringLower (item, 'transferType');
-        const status = this.parseTransactionStatus (this.safeString (item, 'transferStatus'));
-        const id = this.safeString (item, 'transactionId');
+        const type = this.safeStringLower (transaction, 'transferType');
+        const status = this.parseTransactionStatus (this.safeString (transaction, 'transferStatus'));
+        const id = this.safeString (transaction, 'transactionId');
+        const network = this.safeString (transaction, 'walletType');
         return {
             'id': id,
             'timestamp': timestamp,
@@ -397,14 +401,19 @@ module.exports = class coinmate extends Exchange {
             'amount': amount,
             'type': type,
             'txid': txid,
+            'network': network,
             'address': address,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': tag,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'status': status,
             'fee': {
                 'cost': fee,
                 'currency': code,
             },
-            'info': item,
+            'info': transaction,
         };
     }
 
@@ -424,8 +433,8 @@ module.exports = class coinmate extends Exchange {
             request['timestampFrom'] = since;
         }
         const response = await this.privatePostTradeHistory (this.extend (request, params));
-        const items = response['data'];
-        return this.parseTrades (items, undefined, since, limit);
+        const data = this.safeValue (response, 'data', []);
+        return this.parseTrades (data, undefined, since, limit);
     }
 
     parseTrade (trade, market = undefined) {
@@ -460,25 +469,22 @@ module.exports = class coinmate extends Exchange {
         market = this.safeMarket (marketId, market, '_');
         const priceString = this.safeString (trade, 'price');
         const amountString = this.safeString (trade, 'amount');
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const side = this.safeStringLower2 (trade, 'type', 'tradeType');
         const type = this.safeStringLower (trade, 'orderType');
         const orderId = this.safeString (trade, 'orderId');
         const id = this.safeString (trade, 'transactionId');
         const timestamp = this.safeInteger2 (trade, 'timestamp', 'createdTimestamp');
         let fee = undefined;
-        const feeCost = this.safeNumber (trade, 'fee');
-        if (feeCost !== undefined) {
+        const feeCostString = this.safeString (trade, 'fee');
+        if (feeCostString !== undefined) {
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': market['quote'],
             };
         }
         let takerOrMaker = this.safeString (trade, 'feeType');
         takerOrMaker = (takerOrMaker === 'MAKER') ? 'maker' : 'taker';
-        return {
+        return this.safeTrade ({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -488,11 +494,11 @@ module.exports = class coinmate extends Exchange {
             'side': side,
             'order': orderId,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': undefined,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -610,17 +616,17 @@ module.exports = class coinmate extends Exchange {
         const id = this.safeString (order, 'id');
         const timestamp = this.safeInteger (order, 'timestamp');
         const side = this.safeStringLower (order, 'type');
-        const price = this.safeString (order, 'price');
-        const amount = this.safeString (order, 'originalAmount');
-        const remaining = this.safeString2 (order, 'remainingAmount', 'amount');
+        const priceString = this.safeString (order, 'price');
+        const amountString = this.safeString (order, 'originalAmount');
+        const remainingString = this.safeString2 (order, 'remainingAmount', 'amount');
         const status = this.parseOrderStatus (this.safeString (order, 'status'));
         const type = this.parseOrderType (this.safeString (order, 'orderTradeType'));
-        const average = this.safeString (order, 'avgPrice');
+        const averageString = this.safeString (order, 'avgPrice');
         const marketId = this.safeString (order, 'currencyPair');
         const symbol = this.safeSymbol (marketId, market, '_');
         const clientOrderId = this.safeString (order, 'clientOrderId');
         const stopPrice = this.safeNumber (order, 'stopPrice');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'timestamp': timestamp,
@@ -631,13 +637,13 @@ module.exports = class coinmate extends Exchange {
             'timeInForce': undefined,
             'postOnly': undefined,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': stopPrice,
-            'amount': amount,
+            'amount': amountString,
             'cost': undefined,
-            'average': average,
+            'average': averageString,
             'filled': undefined,
-            'remaining': remaining,
+            'remaining': remainingString,
             'status': status,
             'trades': undefined,
             'info': order,

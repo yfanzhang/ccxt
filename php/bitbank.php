@@ -352,6 +352,27 @@ class bitbank extends Exchange {
         return $this->parse_ohlcvs($ohlcv, $market, $timeframe, $since, $limit);
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        $data = $this->safe_value($response, 'data', array());
+        $assets = $this->safe_value($data, 'assets', array());
+        for ($i = 0; $i < count($assets); $i++) {
+            $balance = $assets[$i];
+            $currencyId = $this->safe_string($balance, 'asset');
+            $code = $this->safe_currency_code($currencyId);
+            $account = $this->account();
+            $account['free'] = $this->safe_string($balance, 'free_amount');
+            $account['used'] = $this->safe_string($balance, 'locked_amount');
+            $account['total'] = $this->safe_string($balance, 'onhand_amount');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $this->load_markets();
         $response = $this->privateGetUserAssets ($params);
@@ -388,24 +409,7 @@ class bitbank extends Exchange {
         //       }
         //     }
         //
-        $result = array(
-            'info' => $response,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        $data = $this->safe_value($response, 'data', array());
-        $assets = $this->safe_value($data, 'assets', array());
-        for ($i = 0; $i < count($assets); $i++) {
-            $balance = $assets[$i];
-            $currencyId = $this->safe_string($balance, 'asset');
-            $code = $this->safe_currency_code($currencyId);
-            $account = $this->account();
-            $account['free'] = $this->safe_string($balance, 'free_amount');
-            $account['used'] = $this->safe_string($balance, 'locked_amount');
-            $account['total'] = $this->safe_string($balance, 'onhand_amount');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function parse_order_status($status) {
@@ -438,7 +442,7 @@ class bitbank extends Exchange {
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
         $type = $this->safe_string_lower($order, 'type');
         $side = $this->safe_string_lower($order, 'side');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => null,
             'datetime' => $this->iso8601($timestamp),

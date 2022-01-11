@@ -3,7 +3,7 @@
 //  ---------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { ExchangeError, ExchangeNotAvailable, OnMaintenance, ArgumentsRequired, BadRequest, AccountSuspended, InvalidAddress, PermissionDenied, InsufficientFunds, InvalidNonce, InvalidOrder, OrderNotFound, AuthenticationError, RequestTimeout, BadSymbol, RateLimitExceeded, NetworkError, CancelPending } = require ('./base/errors');
+const { ExchangeError, ExchangeNotAvailable, OnMaintenance, ArgumentsRequired, BadRequest, AccountSuspended, InvalidAddress, PermissionDenied, InsufficientFunds, InvalidNonce, InvalidOrder, OrderNotFound, AuthenticationError, RequestTimeout, BadSymbol, RateLimitExceeded, NetworkError, CancelPending, NotSupported } = require ('./base/errors');
 const { TICK_SIZE, TRUNCATE } = require ('./base/functions/number');
 const Precise = require ('./base/Precise');
 
@@ -20,45 +20,94 @@ module.exports = class okex extends Exchange {
             'pro': true,
             'certified': true,
             'has': {
+                'margin': true,
+                'swap': true,
+                'future': true,
+                'addMargin': true,
+                'cancelAllOrders': undefined,
                 'cancelOrder': true,
+                'cancelOrders': undefined,
                 'CORS': undefined,
+                'createDepositAddress': undefined,
                 'createOrder': true,
+                'createReduceOnlyOrder': undefined,
+                'deposit': undefined,
+                'fetchAccounts': undefined,
+                'fetchAllTradingFees': undefined,
                 'fetchBalance': true,
+                'fetchBidsAsks': undefined,
                 'fetchBorrowRate': true,
+                'fetchBorrowRateHistory': undefined,
                 'fetchBorrowRates': true,
+                'fetchBorrowRatesPerSymbol': false,
+                'fetchCanceledOrders': undefined,
+                'fetchClosedOrder': undefined,
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
+                'fetchDeposit': undefined,
                 'fetchDepositAddress': true,
-                'fetchDepositAddressByNetwork': true,
+                'fetchDepositAddresses': undefined,
+                'fetchDepositAddressesByNetwork': true,
                 'fetchDeposits': true,
+                'fetchFundingFee': undefined,
+                'fetchFundingFees': undefined,
                 'fetchFundingHistory': true,
+                'fetchFundingRate': true,
                 'fetchFundingRateHistory': true,
+                'fetchFundingRates': undefined,
                 'fetchIndexOHLCV': true,
+                'fetchIsolatedPositions': undefined,
+                'fetchL3OrderBook': undefined,
                 'fetchLedger': true,
+                'fetchLedgerEntry': undefined,
+                'fetchLeverage': true,
                 'fetchMarkets': true,
+                'fetchMarketsByType': true,
                 'fetchMarkOHLCV': true,
+                'fetchMyBuys': undefined,
+                'fetchMySells': undefined,
                 'fetchMyTrades': true,
+                'fetchNetworkDepositAddress': undefined,
                 'fetchOHLCV': true,
+                'fetchOpenOrder': undefined,
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
+                'fetchOrderBooks': undefined,
+                'fetchOrders': undefined,
+                'fetchOrdersByState': undefined,
+                'fetchOrdersByStatus': undefined,
                 'fetchOrderTrades': true,
+                'fetchPartiallyFilledOrders': undefined,
                 'fetchPosition': true,
                 'fetchPositions': true,
-                'fetchLeverage': true,
+                'fetchPositionsRisk': undefined,
+                'fetchPremiumIndexOHLCV': undefined,
                 'fetchStatus': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
+                'fetchTickersByType': true,
                 'fetchTime': true,
                 'fetchTrades': true,
+                'fetchTradingFee': true,
+                'fetchTradingFees': undefined,
+                'fetchTradingLimits': undefined,
+                'fetchTransactions': undefined,
+                'fetchTransfers': undefined,
+                'fetchWithdrawAddress': undefined,
+                'fetchWithdrawAddressesByNetwork': undefined,
+                'fetchWithdrawal': undefined,
                 'fetchWithdrawals': true,
-                'transfer': true,
-                'withdraw': true,
-                'setLeverage': true,
-                'setPositionMode': true,
-                'setMarginMode': true,
-                'addMargin': true,
+                'fetchWithdrawalWhitelist': undefined,
+                'loadLeverageBrackets': undefined,
                 'reduceMargin': true,
+                'setLeverage': true,
+                'setMarginMode': true,
+                'setPositionMode': true,
+                'signIn': undefined,
+                'transfer': true,
+                'transferOut': false,
+                'withdraw': true,
             },
             'timeframes': {
                 '1m': '1m',
@@ -155,6 +204,7 @@ module.exports = class okex extends Exchange {
                         'account/interest-accrued': 4,
                         'account/interest-rate': 4,
                         'account/max-withdrawal': 1,
+                        'asset/asset-valuation': 1 / 5,
                         'asset/deposit-address': 5 / 3,
                         'asset/balances': 5 / 3,
                         'asset/transfer-state': 10,
@@ -745,7 +795,7 @@ module.exports = class okex extends Exchange {
         const fees = this.safeValue2 (this.fees, type, 'trading', {});
         let contractSize = undefined;
         if (contract) {
-            contractSize = this.safeString (market, 'ctVal');
+            contractSize = this.safeNumber (market, 'ctVal');
         }
         const leverage = this.safeNumber (market, 'lever', 1);
         return this.extend (fees, {
@@ -1411,7 +1461,7 @@ module.exports = class okex extends Exchange {
         }
         result['timestamp'] = timestamp;
         result['datetime'] = this.iso8601 (timestamp);
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     parseFundingBalance (response) {
@@ -1428,7 +1478,68 @@ module.exports = class okex extends Exchange {
             account['used'] = this.safeString (balance, 'frozenBal');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    parseTradingFee (fee, market = undefined) {
+        //
+        //     {
+        //         "category":"1",
+        //         "delivery":"",
+        //         "exercise":"",
+        //         "instType":"SPOT",
+        //         "level":"Lv1",
+        //         "maker":"-0.0008",
+        //         "taker":"-0.001",
+        //         "ts":"1639043138472"
+        //     }
+        //
+        return {
+            'info': fee,
+            'symbol': this.safeSymbol (undefined, market),
+            'maker': this.safeNumber (fee, 'maker'),
+            'taker': this.safeNumber (fee, 'taker'),
+        };
+    }
+
+    async fetchTradingFee (symbol, params = {}) {
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'instType': market['type'].toUpperCase (), // SPOT, MARGIN, SWAP, FUTURES, OPTION
+            // 'instId': market['id'], // only applicable to SPOT/MARGIN
+            // 'uly': market['id'], // only applicable to FUTURES/SWAP/OPTION
+            // 'category': '1', // 1 = Class A, 2 = Class B, 3 = Class C, 4 = Class D
+        };
+        if (market['spot']) {
+            request['instId'] = market['id'];
+        } else if (market['swap'] || market['futures'] || market['option']) {
+            request['uly'] = market['baseId'] + '-' + market['quoteId'];
+        } else {
+            throw new NotSupported (this.id + ' fetchTradingFee supports spot, swap, futures or option markets only');
+        }
+        const response = await this.privateGetAccountTradeFee (this.extend (request, params));
+        //
+        //     {
+        //         "code":"0",
+        //         "data":[
+        //             {
+        //                 "category":"1",
+        //                 "delivery":"",
+        //                 "exercise":"",
+        //                 "instType":"SPOT",
+        //                 "level":"Lv1",
+        //                 "maker":"-0.0008",
+        //                 "taker":"-0.001",
+        //                 "ts":"1639043138472"
+        //             }
+        //         ],
+        //         "msg":""
+        //     }
+        //
+        const data = this.safeValue (response, 'data', []);
+        const first = this.safeValue (data, 0, {});
+        return this.parseTradingFee (first, market);
     }
 
     async fetchBalance (params = {}) {
@@ -1833,7 +1944,7 @@ module.exports = class okex extends Exchange {
             clientOrderId = undefined; // fix empty clientOrderId string
         }
         const stopPrice = this.safeNumber (order, 'slTriggerPx');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -2762,6 +2873,7 @@ module.exports = class okex extends Exchange {
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': undefined,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': address,
@@ -3059,7 +3171,7 @@ module.exports = class okex extends Exchange {
             'unrealizedPnl': this.parseNumber (unrealizedPnlString),
             'percentage': percentage,
             'contracts': contracts,
-            'contractSize': this.parseNumber (market['contractSize']),
+            'contractSize': this.safeValue (market, 'contractSize'),
             'markPrice': this.parseNumber (markPriceString),
             'side': side,
             'hedged': hedged,
@@ -3211,11 +3323,6 @@ module.exports = class okex extends Exchange {
         // in the response above nextFundingRate is actually two funding rates from now
         //
         const nextFundingRateTimestamp = this.safeInteger (fundingRate, 'fundingTime');
-        let previousFundingTimestamp = undefined;
-        if (nextFundingRateTimestamp !== undefined) {
-            // eight hours
-            previousFundingTimestamp = nextFundingRateTimestamp - 28800000;
-        }
         const marketId = this.safeString (fundingRate, 'instId');
         const symbol = this.safeSymbol (marketId, market);
         const nextFundingRate = this.safeNumber (fundingRate, 'fundingRate');
@@ -3232,9 +3339,9 @@ module.exports = class okex extends Exchange {
             'datetime': undefined,
             'previousFundingRate': undefined,
             'nextFundingRate': nextFundingRate,
-            'previousFundingTimestamp': previousFundingTimestamp, // subtract 8 hours
+            'previousFundingTimestamp': undefined,
             'nextFundingTimestamp': nextFundingRateTimestamp,
-            'previousFundingDatetime': this.iso8601 (previousFundingTimestamp),
+            'previousFundingDatetime': undefined,
             'nextFundingDatetime': this.iso8601 (nextFundingRateTimestamp),
         };
     }
@@ -3614,6 +3721,14 @@ module.exports = class okex extends Exchange {
 
     async addMargin (symbol, amount, params = {}) {
         return await this.modifyMarginHelper (symbol, amount, 'add', params);
+    }
+
+    setSandboxMode (enable) {
+        if (enable) {
+            this.headers['x-simulated-trading'] = 1;
+        } else if ('x-simulated-trading' in this.headers) {
+            this.headers = this.omit (this.headers, 'x-simulated-trading');
+        }
     }
 
     handleErrors (httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody) {

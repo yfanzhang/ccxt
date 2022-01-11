@@ -3,7 +3,7 @@
 //  ---------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { ArgumentsRequired, AuthenticationError, ExchangeError, InsufficientFunds, OrderNotFound, PermissionDenied, BadRequest, BadSymbol, DDoSProtection, InvalidOrder } = require ('./base/errors');
+const { ArgumentsRequired, AuthenticationError, ExchangeError, InsufficientFunds, OrderNotFound, PermissionDenied, BadRequest, BadSymbol, DDoSProtection, InvalidOrder, AccountSuspended } = require ('./base/errors');
 const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
@@ -239,6 +239,7 @@ module.exports = class stex extends Exchange {
                     'Selected Pair is disabled': BadSymbol, // {"success":false,"message":"Selected Pair is disabled"}
                     'Invalid scope(s) provided.': PermissionDenied, // { "message": "Invalid scope(s) provided." }
                     'The maximum amount of open orders with the same price cannot exceed 10': InvalidOrder, // { "success":false,"message":"The maximum amount of open orders with the same price cannot exceed 10" }
+                    'Your account not verified!': AccountSuspended, // {"success":false,"message":"Your account not verified!","unified_message":{"message_id":"verification_required_to_continue","substitutions":null},"notice":"Please be informed that parameter `message` is deprecated and will be removed. Use unified_message instead."}
                 },
                 'broad': {
                     'Not enough': InsufficientFunds, // {"success":false,"message":"Not enough  ETH"}
@@ -792,6 +793,24 @@ module.exports = class stex extends Exchange {
         return this.parseTrades (trades, market, since, limit);
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
+        const balances = this.safeValue (response, 'data', []);
+        for (let i = 0; i < balances.length; i++) {
+            const balance = balances[i];
+            const code = this.safeCurrencyCode (this.safeString (balance, 'currency_id'));
+            const account = this.account ();
+            account['free'] = this.safeString (balance, 'balance');
+            account['used'] = this.safeString (balance, 'frozen_balance');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         // await this.loadAccounts ();
@@ -839,21 +858,7 @@ module.exports = class stex extends Exchange {
         //         ]
         //     }
         //
-        const result = {
-            'info': response,
-            'timestamp': undefined,
-            'datetime': undefined,
-        };
-        const balances = this.safeValue (response, 'data', []);
-        for (let i = 0; i < balances.length; i++) {
-            const balance = balances[i];
-            const code = this.safeCurrencyCode (this.safeString (balance, 'currency_id'));
-            const account = this.account ();
-            account['free'] = this.safeString (balance, 'balance');
-            account['used'] = this.safeString (balance, 'frozen_balance');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     parseOrderStatus (status) {
@@ -1575,12 +1580,14 @@ module.exports = class stex extends Exchange {
                 'currency': feeCurrencyCode,
             };
         }
+        const network = this.safeString (withdrawalAddress, 'protocol_name');
         return {
             'info': transaction,
             'id': id,
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': network,
             'addressFrom': undefined,
             'address': address,
             'addressTo': address,

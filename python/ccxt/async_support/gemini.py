@@ -622,9 +622,7 @@ class gemini(Exchange):
         #
         return self.parse_trades(response, market, since, limit)
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privatePostV1Balances(params)
+    def parse_balance(self, response):
         result = {'info': response}
         for i in range(0, len(response)):
             balance = response[i]
@@ -634,7 +632,12 @@ class gemini(Exchange):
             account['free'] = self.safe_string(balance, 'available')
             account['total'] = self.safe_string(balance, 'amount')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privatePostV1Balances(params)
+        return self.parse_balance(response)
 
     def parse_order(self, order, market=None):
         timestamp = self.safe_integer(order, 'timestampms')
@@ -661,7 +664,7 @@ class gemini(Exchange):
         id = self.safe_string(order, 'order_id')
         side = self.safe_string_lower(order, 'side')
         clientOrderId = self.safe_string(order, 'client_order_id')
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,
@@ -706,11 +709,13 @@ class gemini(Exchange):
         if type == 'market':
             raise ExchangeError(self.id + ' allows limit orders only')
         nonce = self.nonce()
+        amountString = self.amount_to_precision(symbol, amount)
+        priceString = self.price_to_precision(symbol, price)
         request = {
             'client_order_id': str(nonce),
             'symbol': self.market_id(symbol),
-            'amount': str(amount),
-            'price': str(price),
+            'amount': amountString,
+            'price': priceString,
             'side': side,
             'type': 'exchange limit',  # gemini allows limit orders only
         }
@@ -794,8 +799,13 @@ class gemini(Exchange):
             'txid': self.safe_string(transaction, 'txHash'),
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': None,  # or is it defined?
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,  # direction of the transaction,('deposit' | 'withdraw')
             'amount': self.safe_number(transaction, 'amount'),
             'currency': code,

@@ -5,7 +5,6 @@
 const Exchange = require ('./base/Exchange');
 const { ExchangeError, InsufficientFunds, BadRequest, BadSymbol, InvalidOrder, AuthenticationError, ArgumentsRequired, OrderNotFound, ExchangeNotAvailable } = require ('./base/errors');
 const { TICK_SIZE } = require ('./base/functions/number');
-const Precise = require ('./base/Precise');
 
 //  ---------------------------------------------------------------------------
 
@@ -126,22 +125,22 @@ module.exports = class delta extends Exchange {
                     'maker': 0.10 / 100,
                     'tiers': {
                         'taker': [
-                            [0, 0.15 / 100],
-                            [100, 0.13 / 100],
-                            [250, 0.13 / 100],
-                            [1000, 0.1 / 100],
-                            [5000, 0.09 / 100],
-                            [10000, 0.075 / 100],
-                            [20000, 0.065 / 100],
+                            [ 0, 0.15 / 100 ],
+                            [ 100, 0.13 / 100 ],
+                            [ 250, 0.13 / 100 ],
+                            [ 1000, 0.1 / 100 ],
+                            [ 5000, 0.09 / 100 ],
+                            [ 10000, 0.075 / 100 ],
+                            [ 20000, 0.065 / 100 ],
                         ],
                         'maker': [
-                            [0, 0.1 / 100],
-                            [100, 0.1 / 100],
-                            [250, 0.09 / 100],
-                            [1000, 0.075 / 100],
-                            [5000, 0.06 / 100],
-                            [10000, 0.05 / 100],
-                            [20000, 0.05 / 100],
+                            [ 0, 0.1 / 100 ],
+                            [ 100, 0.1 / 100 ],
+                            [ 250, 0.09 / 100 ],
+                            [ 1000, 0.075 / 100 ],
+                            [ 5000, 0.06 / 100 ],
+                            [ 10000, 0.05 / 100 ],
+                            [ 20000, 0.05 / 100 ],
                         ],
                     },
                 },
@@ -259,6 +258,8 @@ module.exports = class delta extends Exchange {
                 'name': this.safeString (currency, 'name'),
                 'info': currency, // the original payload
                 'active': active,
+                'deposit': depositsEnabled,
+                'withdraw': withdrawalsEnabled,
                 'fee': this.safeNumber (currency, 'base_withdrawal_fee'),
                 'precision': 1 / Math.pow (10, precision),
                 'limits': {
@@ -648,9 +649,6 @@ module.exports = class delta extends Exchange {
         timestamp = this.safeIntegerProduct (trade, 'timestamp', 0.001, timestamp);
         const priceString = this.safeString (trade, 'price');
         const amountString = this.safeString (trade, 'size');
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const product = this.safeValue (trade, 'product', {});
         const marketId = this.safeString (product, 'symbol');
         const symbol = this.safeSymbol (marketId, market);
@@ -669,18 +667,18 @@ module.exports = class delta extends Exchange {
         if (type !== undefined) {
             type = type.replace ('_order', '');
         }
-        const feeCost = this.safeNumber (trade, 'commission');
+        const feeCostString = this.safeString (trade, 'commission');
         let fee = undefined;
-        if (feeCost !== undefined) {
+        if (feeCostString !== undefined) {
             const settlingAsset = this.safeValue (product, 'settling_asset', {});
             const feeCurrencyId = this.safeString (settlingAsset, 'symbol');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
             };
         }
-        return {
+        return this.safeTrade ({
             'id': id,
             'order': orderId,
             'timestamp': timestamp,
@@ -688,13 +686,13 @@ module.exports = class delta extends Exchange {
             'symbol': symbol,
             'type': type,
             'side': side,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': undefined,
             'takerOrMaker': takerOrMaker,
             'fee': fee,
             'info': trade,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -777,6 +775,23 @@ module.exports = class delta extends Exchange {
         return this.parseOHLCVs (result, market, timeframe, since, limit);
     }
 
+    parseBalance (response) {
+        const balances = this.safeValue (response, 'result', []);
+        const result = { 'info': response };
+        const currenciesByNumericId = this.safeValue (this.options, 'currenciesByNumericId', {});
+        for (let i = 0; i < balances.length; i++) {
+            const balance = balances[i];
+            const currencyId = this.safeString (balance, 'asset_id');
+            const currency = this.safeValue (currenciesByNumericId, currencyId);
+            const code = (currency === undefined) ? currencyId : currency['code'];
+            const account = this.account ();
+            account['total'] = this.safeString (balance, 'balance');
+            account['free'] = this.safeString (balance, 'available_balance');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const response = await this.privateGetWalletBalances (params);
@@ -801,20 +816,7 @@ module.exports = class delta extends Exchange {
         //         "success":true
         //     }
         //
-        const balances = this.safeValue (response, 'result', []);
-        const result = { 'info': response };
-        const currenciesByNumericId = this.safeValue (this.options, 'currenciesByNumericId', {});
-        for (let i = 0; i < balances.length; i++) {
-            const balance = balances[i];
-            const currencyId = this.safeString (balance, 'asset_id');
-            const currency = this.safeValue (currenciesByNumericId, currencyId);
-            const code = (currency === undefined) ? currencyId : currency['code'];
-            const account = this.account ();
-            account['total'] = this.safeString (balance, 'balance');
-            account['free'] = this.safeString (balance, 'available_balance');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchPosition (symbol, params = undefined) {
@@ -924,8 +926,8 @@ module.exports = class delta extends Exchange {
         const remaining = this.safeString (order, 'unfilled_size');
         const average = this.safeString (order, 'average_fill_price');
         let fee = undefined;
-        const feeCost = this.safeNumber (order, 'paid_commission');
-        if (feeCost !== undefined) {
+        const feeCostString = this.safeString (order, 'paid_commission');
+        if (feeCostString !== undefined) {
             let feeCurrencyCode = undefined;
             if (market !== undefined) {
                 const settlingAsset = this.safeValue (market['info'], 'settling_asset', {});
@@ -933,11 +935,11 @@ module.exports = class delta extends Exchange {
                 feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
             }
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
             };
         }
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,

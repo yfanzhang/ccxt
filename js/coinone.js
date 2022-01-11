@@ -24,7 +24,6 @@ module.exports = class coinone extends Exchange {
                 'createOrder': true,
                 'fetchBalance': true,
                 'fetchClosedOrders': undefined, // the endpoint that should return closed orders actually returns trades, https://github.com/ccxt/ccxt/pull/7067
-                'fetchCurrencies': undefined,
                 'fetchDepositAddresses': true,
                 'fetchMarkets': true,
                 'fetchMyTrades': true,
@@ -134,9 +133,7 @@ module.exports = class coinone extends Exchange {
         return result;
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privatePostAccountBalance (params);
+    parseBalance (response) {
         const result = { 'info': response };
         const balances = this.omit (response, [
             'errorCode',
@@ -153,7 +150,13 @@ module.exports = class coinone extends Exchange {
             account['total'] = this.safeString (balance, 'balance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privatePostAccountBalance (params);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -276,27 +279,24 @@ module.exports = class coinone extends Exchange {
         }
         const priceString = this.safeString (trade, 'price');
         const amountString = this.safeString (trade, 'qty');
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         const orderId = this.safeString (trade, 'orderId');
-        let feeCost = this.safeNumber (trade, 'fee');
+        let feeCostString = this.safeString (trade, 'fee');
         let fee = undefined;
-        if (feeCost !== undefined) {
-            feeCost = Math.abs (feeCost);
-            let feeRate = this.safeNumber (trade, 'feeRate');
-            feeRate = Math.abs (feeRate);
+        if (feeCostString !== undefined) {
+            feeCostString = Precise.stringAbs (feeCostString);
+            let feeRateString = this.safeString (trade, 'feeRate');
+            feeRateString = Precise.stringAbs (feeRateString);
             let feeCurrencyCode = undefined;
             if (market !== undefined) {
                 feeCurrencyCode = (side === 'sell') ? market['quote'] : market['base'];
             }
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
-                'rate': feeRate,
+                'rate': feeRateString,
             };
         }
-        return {
+        return this.safeTrade ({
             'id': this.safeString (trade, 'id'),
             'info': trade,
             'timestamp': timestamp,
@@ -306,11 +306,11 @@ module.exports = class coinone extends Exchange {
             'type': undefined,
             'side': side,
             'takerOrMaker': undefined,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': undefined,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -444,7 +444,7 @@ module.exports = class coinone extends Exchange {
         //     }
         //
         const id = this.safeString (order, 'orderId');
-        const price = this.safeString (order, 'price');
+        const priceString = this.safeString (order, 'price');
         const timestamp = this.safeTimestamp (order, 'timestamp');
         let side = this.safeString (order, 'type');
         if (side === 'ask') {
@@ -452,13 +452,13 @@ module.exports = class coinone extends Exchange {
         } else if (side === 'bid') {
             side = 'buy';
         }
-        const remaining = this.safeString (order, 'remainQty');
-        const amount = this.safeString (order, 'qty');
+        const remainingString = this.safeString (order, 'remainQty');
+        const amountString = this.safeString (order, 'qty');
         let status = this.safeString (order, 'status');
         // https://github.com/ccxt/ccxt/pull/7067
         if (status === 'live') {
-            if ((remaining !== undefined) && (amount !== undefined)) {
-                const isLessThan = Precise.stringLt (remaining, amount);
+            if ((remainingString !== undefined) && (amountString !== undefined)) {
+                const isLessThan = Precise.stringLt (remainingString, amountString);
                 if (isLessThan) {
                     status = 'canceled';
                 }
@@ -484,16 +484,16 @@ module.exports = class coinone extends Exchange {
             quote = market['quote'];
         }
         let fee = undefined;
-        const feeCost = this.safeNumber (order, 'fee');
-        if (feeCost !== undefined) {
+        const feeCostString = this.safeString (order, 'fee');
+        if (feeCostString !== undefined) {
             const feeCurrencyCode = (side === 'sell') ? quote : base;
             fee = {
-                'cost': feeCost,
-                'rate': this.safeNumber (order, 'feeRate'),
+                'cost': feeCostString,
+                'rate': this.safeString (order, 'feeRate'),
                 'currency': feeCurrencyCode,
             };
         }
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -505,13 +505,13 @@ module.exports = class coinone extends Exchange {
             'timeInForce': undefined,
             'postOnly': undefined,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': undefined,
             'cost': undefined,
             'average': undefined,
-            'amount': amount,
+            'amount': amountString,
             'filled': undefined,
-            'remaining': remaining,
+            'remaining': remainingString,
             'status': status,
             'fee': fee,
             'trades': undefined,

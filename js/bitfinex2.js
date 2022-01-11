@@ -232,30 +232,30 @@ module.exports = class bitfinex2 extends bitfinex {
                     'taker': this.parseNumber ('0.002'),
                     'tiers': {
                         'taker': [
-                            [this.parseNumber ('0'), this.parseNumber ('0.002')],
-                            [this.parseNumber ('500000'), this.parseNumber ('0.002')],
-                            [this.parseNumber ('1000000'), this.parseNumber ('0.002')],
-                            [this.parseNumber ('2500000'), this.parseNumber ('0.002')],
-                            [this.parseNumber ('5000000'), this.parseNumber ('0.002')],
-                            [this.parseNumber ('7500000'), this.parseNumber ('0.002')],
-                            [this.parseNumber ('10000000'), this.parseNumber ('0.0018')],
-                            [this.parseNumber ('15000000'), this.parseNumber ('0.0016')],
-                            [this.parseNumber ('20000000'), this.parseNumber ('0.0014')],
-                            [this.parseNumber ('25000000'), this.parseNumber ('0.0012')],
-                            [this.parseNumber ('30000000'), this.parseNumber ('0.001')],
+                            [ this.parseNumber ('0'), this.parseNumber ('0.002') ],
+                            [ this.parseNumber ('500000'), this.parseNumber ('0.002') ],
+                            [ this.parseNumber ('1000000'), this.parseNumber ('0.002') ],
+                            [ this.parseNumber ('2500000'), this.parseNumber ('0.002') ],
+                            [ this.parseNumber ('5000000'), this.parseNumber ('0.002') ],
+                            [ this.parseNumber ('7500000'), this.parseNumber ('0.002') ],
+                            [ this.parseNumber ('10000000'), this.parseNumber ('0.0018') ],
+                            [ this.parseNumber ('15000000'), this.parseNumber ('0.0016') ],
+                            [ this.parseNumber ('20000000'), this.parseNumber ('0.0014') ],
+                            [ this.parseNumber ('25000000'), this.parseNumber ('0.0012') ],
+                            [ this.parseNumber ('30000000'), this.parseNumber ('0.001') ],
                         ],
                         'maker': [
-                            [this.parseNumber ('0'), this.parseNumber ('0.001')],
-                            [this.parseNumber ('500000'), this.parseNumber ('0.0008')],
-                            [this.parseNumber ('1000000'), this.parseNumber ('0.0006')],
-                            [this.parseNumber ('2500000'), this.parseNumber ('0.0004')],
-                            [this.parseNumber ('5000000'), this.parseNumber ('0.0002')],
-                            [this.parseNumber ('7500000'), this.parseNumber ('0')],
-                            [this.parseNumber ('10000000'), this.parseNumber ('0')],
-                            [this.parseNumber ('15000000'), this.parseNumber ('0')],
-                            [this.parseNumber ('20000000'), this.parseNumber ('0')],
-                            [this.parseNumber ('25000000'), this.parseNumber ('0')],
-                            [this.parseNumber ('30000000'), this.parseNumber ('0')],
+                            [ this.parseNumber ('0'), this.parseNumber ('0.001') ],
+                            [ this.parseNumber ('500000'), this.parseNumber ('0.0008') ],
+                            [ this.parseNumber ('1000000'), this.parseNumber ('0.0006') ],
+                            [ this.parseNumber ('2500000'), this.parseNumber ('0.0004') ],
+                            [ this.parseNumber ('5000000'), this.parseNumber ('0.0002') ],
+                            [ this.parseNumber ('7500000'), this.parseNumber ('0') ],
+                            [ this.parseNumber ('10000000'), this.parseNumber ('0') ],
+                            [ this.parseNumber ('15000000'), this.parseNumber ('0') ],
+                            [ this.parseNumber ('20000000'), this.parseNumber ('0') ],
+                            [ this.parseNumber ('25000000'), this.parseNumber ('0') ],
+                            [ this.parseNumber ('30000000'), this.parseNumber ('0') ],
                         ],
                     },
                 },
@@ -337,6 +337,14 @@ module.exports = class bitfinex2 extends bitfinex {
         return 'f' + code;
     }
 
+    getCurrencyName (code) {
+        // temporary fix for transpiler recognition, even though this is in parent class
+        if (code in this.options['currencyNames']) {
+            return this.options['currencyNames'][code];
+        }
+        throw new NotSupported (this.id + ' ' + code + ' not supported for withdrawal');
+    }
+
     async fetchStatus (params = {}) {
         //
         //    [1] // operative
@@ -353,7 +361,7 @@ module.exports = class bitfinex2 extends bitfinex {
     }
 
     async fetchMarkets (params = {}) {
-        // todo drop v1 in favor of v2 configs
+        // todo drop v1 in favor of v2 configs  ( temp-reference for v2update: https://pastebin.com/raw/S8CmqSHQ )
         // pub:list:pair:exchange,pub:list:pair:margin,pub:list:pair:futures,pub:info:pair
         const v2response = await this.publicGetConfPubListPairFutures (params);
         const v1response = await this.v1GetSymbolsDetails (params);
@@ -366,8 +374,8 @@ module.exports = class bitfinex2 extends bitfinex {
             if (this.inArray (id, futuresMarketIds)) {
                 spot = false;
             }
-            const futures = !spot;
-            const type = spot ? 'spot' : 'futures';
+            const future = !spot;
+            const type = spot ? 'spot' : 'future';
             let baseId = undefined;
             let quoteId = undefined;
             if (id.indexOf (':') >= 0) {
@@ -420,7 +428,7 @@ module.exports = class bitfinex2 extends bitfinex {
                 'swap': false,
                 'spot': spot,
                 'margin': margin,
-                'futures': futures,
+                'future': future,
             });
         }
         return result;
@@ -546,11 +554,14 @@ module.exports = class bitfinex2 extends bitfinex {
             const fid = 'f' + id;
             result[code] = {
                 'id': fid,
+                'uppercaseId': id,
                 'code': code,
                 'info': [ id, label, pool, feeValues, undl ],
                 'type': type,
                 'name': name,
                 'active': true,
+                'deposit': undefined,
+                'withdraw': undefined,
                 'fee': fee,
                 'precision': precision,
                 'limits': {
@@ -599,7 +610,7 @@ module.exports = class bitfinex2 extends bitfinex {
                 result[code] = account;
             }
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     async transfer (code, amount, fromAccount, toAccount, params = {}) {
@@ -1008,7 +1019,7 @@ module.exports = class bitfinex2 extends bitfinex {
         const price = this.safeString (order, 16);
         const average = this.safeString (order, 17);
         const clientOrderId = this.safeString (order, 2);
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1344,6 +1355,7 @@ module.exports = class bitfinex2 extends bitfinex {
             'ERROR': 'failed',
             'FAILURE': 'failed',
             'CANCELED': 'canceled',
+            'COMPLETED': 'ok',
         };
         return this.safeString (statuses, status, status);
     }
@@ -1392,12 +1404,12 @@ module.exports = class bitfinex2 extends bitfinex {
         //         -0.00135, // FEES
         //         null,
         //         null,
-        //         'DESTINATION_ADDRESS',
+        //         '0x38110e0Fc932CB2BE...........', // DESTINATION_ADDRESS
         //         null,
         //         null,
         //         null,
-        //         'TRANSACTION_ID',
-        //         "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE
+        //         '0x523ec8945500.....................................', // TRANSACTION_ID
+        //         "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE, might also be: null
         //     ]
         //
         const transactionLength = transaction.length;
@@ -1412,7 +1424,7 @@ module.exports = class bitfinex2 extends bitfinex {
         let feeCost = undefined;
         let txid = undefined;
         let addressTo = undefined;
-        if (transactionLength < 9) {
+        if (transactionLength === 8) {
             const data = this.safeValue (transaction, 4, []);
             timestamp = this.safeInteger (transaction, 0);
             if (currency !== undefined) {
@@ -1431,8 +1443,11 @@ module.exports = class bitfinex2 extends bitfinex {
             }
             tag = this.safeString (data, 3);
             type = 'withdrawal';
-        } else {
+        } else if (transactionLength === 22) {
             id = this.safeString (transaction, 0);
+            const currencyId = this.safeString (transaction, 1);
+            currency = this.safeCurrency (currencyId, currency);
+            code = currency['code'];
             timestamp = this.safeInteger (transaction, 5);
             updated = this.safeInteger (transaction, 6);
             status = this.parseTransactionStatus (this.safeString (transaction, 9));
@@ -1457,6 +1472,7 @@ module.exports = class bitfinex2 extends bitfinex {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'addressFrom': undefined,
             'address': addressTo, // this is actually the tag for XRP transfers (the address is missing)
             'addressTo': addressTo,
@@ -1483,7 +1499,7 @@ module.exports = class bitfinex2 extends bitfinex {
         let method = 'privatePostAuthRMovementsHist';
         if (code !== undefined) {
             currency = this.currency (code);
-            request['currency'] = currency['id'];
+            request['currency'] = currency['uppercaseId'];
             method = 'privatePostAuthRMovementsCurrencyHist';
         }
         if (since !== undefined) {
@@ -1512,12 +1528,12 @@ module.exports = class bitfinex2 extends bitfinex {
         //             -0.00135, // FEES
         //             null,
         //             null,
-        //             'DESTINATION_ADDRESS',
+        //             '0x38110e0Fc932CB2BE...........', // DESTINATION_ADDRESS
         //             null,
         //             null,
         //             null,
-        //             'TRANSACTION_ID',
-        //             "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE
+        //             '0x523ec8945500.....................................', // TRANSACTION_ID
+        //             "Purchase of 100 pizzas", // WITHDRAW_TRANSACTION_NOTE, might also be: null
         //         ]
         //     ]
         //

@@ -247,9 +247,7 @@ module.exports = class lykke extends Exchange {
         return this.parseTrades (response, market, since, limit);
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetWallets (params);
+    parseBalance (response) {
         const result = { 'info': response };
         for (let i = 0; i < response.length; i++) {
             const balance = response[i];
@@ -260,7 +258,13 @@ module.exports = class lykke extends Exchange {
             account['used'] = this.safeString (balance, 'Reserved');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetWallets (params);
+        return this.parseBalance (response);
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
@@ -492,7 +496,7 @@ module.exports = class lykke extends Exchange {
         }
         const remaining = Precise.stringAbs (this.safeString (order, 'RemainingVolume'));
         const id = this.safeString (order, 'Id');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,

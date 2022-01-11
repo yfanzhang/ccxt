@@ -38,6 +38,9 @@ class bybit(Exchange):
             'rateLimit': 100,
             'hostname': 'bybit.com',  # bybit.com, bytick.com
             'has': {
+                'margin': False,
+                'swap': True,
+                'future': True,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'CORS': True,
@@ -69,8 +72,8 @@ class bybit(Exchange):
                 'fetchTrades': True,
                 'fetchTransactions': None,
                 'fetchWithdrawals': True,
-                'setMarginMode': True,
                 'setLeverage': True,
+                'setMarginMode': True,
             },
             'timeframes': {
                 '1m': '1',
@@ -114,6 +117,7 @@ class bybit(Exchange):
                 'referral': 'https://www.bybit.com/app/register?ref=X7Prm',
             },
             'api': {
+                # outdated endpoints -----------------------------------------
                 'spot': {
                     'public': {
                         'get': [
@@ -243,7 +247,64 @@ class bybit(Exchange):
                         ],
                     },
                 },
+                # new endpoints ------------------------------------------
                 'public': {
+                    'get': {
+                        # inverse swap
+                        'v2/public/orderBook/L2': 1,
+                        'v2/public/kline/list': 1,
+                        'v2/public/tickers': 1,
+                        'v2/public/trading-records': 1,
+                        'v2/public/symbols': 1,
+                        'v2/public/mark-price-kline': 1,
+                        'v2/public/index-price-kline': 1,
+                        'v2/public/premium-index-kline': 1,
+                        'v2/public/open-interest': 1,
+                        'v2/public/big-deal': 1,
+                        'v2/public/account-ratio': 1,
+                        'v2/public/funding-rate': 1,
+                        'v2/public/elite-ratio': 1,
+                        # linear swap USDT
+                        'public/linear/kline': 1,
+                        'public/linear/recent-trading-records': 1,
+                        'public/linear/funding/prev-funding-rate': 1,
+                        'public/linear/mark-price-kline': 1,
+                        'public/linear/index-price-kline': 1,
+                        'public/linear/premium-index-kline': 1,
+                        'public/linear/symbols': 1,
+                        # spot
+                        'spot/v1/time': 1,
+                        'spot/v1/symbols': 1,
+                        'spot/quote/v1/depth': 1,
+                        'spot/quote/v1/depth/merged': 1,
+                        'spot/quote/v1/trades': 1,
+                        'spot/quote/v1/kline': 1,
+                        'spot/quote/v1/ticker/24hr': 1,
+                        'spot/quote/v1/ticker/price': 1,
+                        'spot/quote/v1/ticker/book_ticker': 1,
+                        # data
+                        'v2/public/time': 1,
+                        'v2/public/announcement': 1,
+                        # USDC endpoints are testnet only as of 2022 Jan 11 ----------
+                        # option USDC(testnet only)
+                        'option/usdc/openapi/public/v1/order-book': 1,
+                        'option/usdc/openapi/public/v1/symbols': 1,
+                        'option/usdc/openapi/public/v1/tick': 1,
+                        'option/usdc/openapi/public/v1/delivery-price': 1,
+                        'option/usdc/openapi/public/v1/query-trade-latest': 1,
+                        # perpetual swap USDC(testnet only)
+                        'perpetual/usdc/openapi/public/v1/order-book': 1,
+                        'perpetual/usdc/openapi/public/v1/symbols': 1,
+                        'perpetual/usdc/openapi/public/v1/tick': 1,
+                        'perpetual/usdc/openapi/public/v1/kline/list': 1,
+                        'perpetual/usdc/openapi/public/v1/mark-price-kline': 1,
+                        'perpetual/usdc/openapi/public/v1/index-price-kline': 1,
+                        'perpetual/usdc/openapi/public/v1/premium-index-kline': 1,
+                        'perpetual/usdc/openapi/public/v1/open-interest': 1,
+                        'perpetual/usdc/openapi/public/v1/big-deal': 1,
+                        'perpetual/usdc/openapi/public/v1/account-ratio': 1,
+                    },
+                    # outdated endpoints--------------------------------------
                     'linear': {
                         'get': [
                             'kline',
@@ -257,6 +318,150 @@ class bybit(Exchange):
                     },
                 },
                 'private': {
+                    'get': {
+                        # inverse swap
+                        'v2/private/order/list': 1,
+                        'v2/private/order': 1,
+                        'v2/private/stop-order/list': 1,
+                        'v2/private/stop-order': 1,
+                        'v2/private/position/list': 1,
+                        'v2/private/execution/list': 1,
+                        'v2/private/trade/closed-pnl/list': 1,
+                        'v2/public/risk-limit/list': 1,
+                        'v2/public/funding/prev-funding-rate': 1,
+                        'v2/private/funding/prev-funding': 1,
+                        'v2/private/funding/predicted-funding': 1,
+                        'v2/private/account/api-key': 1,
+                        'v2/private/account/lcp': 1,
+                        'v2/private/wallet/balance': 1,
+                        'v2/private/wallet/fund/records': 1,
+                        'v2/private/wallet/withdraw/list': 1,
+                        'v2/private/exchange-order/list': 1,
+                        # linear swap USDT
+                        'private/linear/order/list': 1,
+                        'private/linear/order/search': 1,
+                        'private/linear/stop-order/list': 1,
+                        'private/linear/stop-order/search': 1,
+                        'private/linear/position/list': 1,
+                        'private/linear/trade/execution/list': 1,
+                        'private/linear/trade/closed-pnl/list': 1,
+                        'public/linear/risk-limit': 1,
+                        'private/linear/funding/predicted-funding': 1,
+                        'private/linear/funding/prev-funding': 1,
+                        # inverse futures
+                        'futures/private/order/list': 1,
+                        'futures/private/order': 1,
+                        'futures/private/stop-order/list': 1,
+                        'futures/private/stop-order': 1,
+                        'futures/private/position/list': 1,
+                        'futures/private/execution/list': 1,
+                        'futures/private/trade/closed-pnl/list': 1,
+                        # spot
+                        'spot/v1/account': 1,
+                        'spot/v1/order': 1,
+                        'spot/v1/open-orders': 1,
+                        'spot/v1/history-orders': 1,
+                        'spot/v1/myTrades': 1,
+                        # account
+                        'asset/v1/private/transfer/list': 1,
+                        'asset/v1/private/sub-member/transfer/list': 1,
+                        'asset/v1/private/sub-member/member-ids': 1,
+                    },
+                    'post': {
+                        # inverse swap
+                        'v2/private/order/create': 1,
+                        'v2/private/order/cancel': 1,
+                        'v2/private/order/cancelAll': 1,
+                        'v2/private/order/replace': 1,
+                        'v2/private/stop-order/create': 1,
+                        'v2/private/stop-order/cancel': 1,
+                        'v2/private/stop-order/cancelAll': 1,
+                        'v2/private/stop-order/replace': 1,
+                        'v2/private/position/change-position-margin': 1,
+                        'v2/private/position/trading-stop': 1,
+                        'v2/private/position/leverage/save': 1,
+                        'v2/private/tpsl/switch-mode': 1,
+                        'v2/private/position/switch-isolated': 1,
+                        'v2/private/position/risk-limit': 1,
+                        'v2/private/position/switch-mode': 1,
+                        # linear swap USDT
+                        'private/linear/order/create': 1,
+                        'private/linear/order/cancel': 1,
+                        'private/linear/order/cancel-all': 1,
+                        'private/linear/order/replace': 1,
+                        'private/linear/stop-order/create': 1,
+                        'private/linear/stop-order/cancel': 1,
+                        'private/linear/stop-order/cancel-all': 1,
+                        'private/linear/stop-order/replace': 1,
+                        'private/linear/position/set-auto-add-margin': 1,
+                        'private/linear/position/switch-isolated': 1,
+                        'private/linear/position/switch-mode': 1,
+                        'private/linear/tpsl/switch-mode': 1,
+                        'private/linear/position/add-margin': 1,
+                        'private/linear/position/set-leverage': 1,
+                        'private/linear/position/trading-stop': 1,
+                        'private/linear/position/set-risk': 1,
+                        # inverse futures
+                        'futures/private/order/create': 1,
+                        'futures/private/order/cancel': 1,
+                        'futures/private/order/cancelAll': 1,
+                        'futures/private/order/replace': 1,
+                        'futures/private/stop-order/create': 1,
+                        'futures/private/stop-order/cancel': 1,
+                        'futures/private/stop-order/cancelAll': 1,
+                        'futures/private/stop-order/replace': 1,
+                        'futures/private/position/change-position-margin': 1,
+                        'futures/private/position/trading-stop': 1,
+                        'futures/private/position/leverage/save': 1,
+                        'futures/private/position/switch-mode': 1,
+                        'futures/private/tpsl/switch-mode': 1,
+                        'futures/private/position/switch-isolated': 1,
+                        'futures/private/position/risk-limit': 1,
+                        # spot
+                        'spot/v1/order': 1,
+                        # account
+                        'asset/v1/private/transfer': 1,
+                        'asset/v1/private/sub-member/transfer': 1,
+                        # USDC endpoints are testnet only as of 2022 Jan 11 ----------
+                        # option USDC(testnet only)
+                        'option/usdc/openapi/private/v1/place-order': 1,
+                        'option/usdc/openapi/private/v1/batch-place-order': 1,
+                        'option/usdc/openapi/private/v1/replace-order': 1,
+                        'option/usdc/openapi/private/v1/batch-replace-orders': 1,
+                        'option/usdc/openapi/private/v1/cancel-order': 1,
+                        'option/usdc/openapi/private/v1/batch-cancel-orders': 1,
+                        'option/usdc/openapi/private/v1/cancel-all': 1,
+                        'option/usdc/openapi/private/v1/query-active-orders': 1,
+                        'option/usdc/openapi/private/v1/query-order-history': 1,
+                        'option/usdc/openapi/private/v1/execution-list': 1,
+                        'option/usdc/openapi/private/v1/query-transaction-log': 1,
+                        'option/usdc/openapi/private/v1/query-wallet-balance': 1,
+                        'option/usdc/openapi/private/v1/query-asset-info': 1,
+                        'option/usdc/openapi/private/v1/query-margin-info': 1,
+                        'option/usdc/openapi/private/v1/query-position': 1,
+                        'option/usdc/openapi/private/v1/query-delivery-list': 1,
+                        'option/usdc/openapi/private/v1/query-position-exp-date': 1,
+                        'option/usdc/openapi/private/v1/mmp-modify': 1,
+                        'option/usdc/openapi/private/v1/mmp-reset': 1,
+                        # perpetual swap USDC(testnet only)
+                        'perpetual/usdc/openapi/private/v1/place-order': 1,
+                        'perpetual/usdc/openapi/private/v1/replace-order': 1,
+                        'perpetual/usdc/openapi/private/v1/cancel-order': 1,
+                        'perpetual/usdc/openapi/private/v1/cancel-all': 1,
+                        'perpetual/usdc/openapi/private/v1/position/leverage/save': 1,
+                        'option/usdc/openapi/private/v1/session-settlement': 1,
+                        'perpetual/usdc/openapi/public/v1/risk-limit/list': 1,
+                        'perpetual/usdc/openapi/private/v1/position/set-risk-limit': 1,
+                    },
+                    'delete': {
+                        # spot
+                        'spot/v1/order': 1,
+                        'spot/v1/order/fast': 1,
+                        'spot/order/batch-cancel': 1,
+                        'spot/order/batch-fast-cancel': 1,
+                        'spot/order/batch-cancel-by-ids': 1,
+                    },
+                    # outdated endpoints -------------------------------------
                     'linear': {
                         'get': [
                             'order/list',
@@ -280,6 +485,7 @@ class bybit(Exchange):
                             'stop-order/replace',
                             'position/set-auto-add-margin',
                             'position/switch-isolated',
+                            'position/switch-mode',
                             'tpsl/switch-mode',
                             'position/add-margin',
                             'position/set-leverage',
@@ -445,12 +651,6 @@ class bybit(Exchange):
 
     def nonce(self):
         return self.milliseconds() - self.options['timeDifference']
-
-    async def load_time_difference(self, params={}):
-        serverTime = await self.fetch_time(params)
-        after = self.milliseconds()
-        self.options['timeDifference'] = after - serverTime
-        return self.options['timeDifference']
 
     async def fetch_time(self, params={}):
         response = await self.v2PublicGetTime(params)
@@ -781,7 +981,7 @@ class bybit(Exchange):
             self.safe_number(ohlcv, 'high'),
             self.safe_number(ohlcv, 'low'),
             self.safe_number(ohlcv, 'close'),
-            self.safe_number_2(ohlcv, 'turnover', 'volume'),
+            self.safe_number_2(ohlcv, 'volume', 'turnover'),
         ]
 
     async def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
@@ -939,43 +1139,40 @@ class bybit(Exchange):
         #
         # fetchTrades(public)
         #
-        #     {
-        #         id: 43785688,
-        #         symbol: 'BTCUSD',
-        #         price: 7786,
-        #         qty: 67,
-        #         side: 'Sell',
-        #         time: '2020-03-11T19:18:30.123Z'
-        #     }
+        #      {
+        #          "id": "44275042152",
+        #          "symbol": "AAVEUSDT",
+        #          "price": "256.35",
+        #          "qty": "0.1",
+        #          "side": "Buy",
+        #          "time": "2021-11-30T12:46:14.000Z",
+        #          "trade_time_ms": "1638276374312"
+        #      }
         #
         # fetchMyTrades, fetchOrderTrades(private)
         #
-        #     {
-        #         "closed_size": 0,
-        #         "cross_seq": 277136382,
-        #         "exec_fee": "0.0000001",
-        #         "exec_id": "256e5ef8-abfe-5772-971b-f944e15e0d68",
-        #         "exec_price": "8178.5",
-        #         "exec_qty": 1,
-        #         # the docs say the exec_time field is "abandoned" now
-        #         # the user should use "trade_time_ms"
-        #         "exec_time": "1571676941.70682",
-        #         "exec_type": "Trade",  #Exec Type Enum
-        #         "exec_value": "0.00012227",
-        #         "fee_rate": "0.00075",
-        #         "last_liquidity_ind": "RemovedLiquidity",  #Liquidity Enum
-        #         "leaves_qty": 0,
-        #         "nth_fill": 2,
-        #         "order_id": "7ad50cb1-9ad0-4f74-804b-d82a516e1029",
-        #         "order_link_id": "",
-        #         "order_price": "8178",
-        #         "order_qty": 1,
-        #         "order_type": "Market",  #Order Type Enum
-        #         "side": "Buy",  #Side Enum
-        #         "symbol": "BTCUSD",  #Symbol Enum
-        #         "user_id": 1,
-        #         "trade_time_ms": 1577480599000
-        #     }
+        #      {
+        #          "order_id": "b020b4bc-6fe2-45b5-adbc-dd07794f9746",
+        #          "order_link_id": "",
+        #          "side": "Buy",
+        #          "symbol": "AAVEUSDT",
+        #          "exec_id": "09abe8f0-aea6-514e-942b-7da8cb935120",
+        #          "price": "269.3",
+        #          "order_price": "269.3",
+        #          "order_qty": "0.1",
+        #          "order_type": "Market",
+        #          "fee_rate": "0.00075",
+        #          "exec_price": "256.35",
+        #          "exec_type": "Trade",
+        #          "exec_qty": "0.1",
+        #          "exec_fee": "0.01922625",
+        #          "exec_value": "25.635",
+        #          "leaves_qty": "0",
+        #          "closed_size": "0",
+        #          "last_liquidity_ind": "RemovedLiquidity",
+        #          "trade_time": "1638276374",
+        #          "trade_time_ms": "1638276374312"
+        #      }
         #
         id = self.safe_string_2(trade, 'id', 'exec_id')
         marketId = self.safe_string(trade, 'symbol')
@@ -983,27 +1180,23 @@ class bybit(Exchange):
         symbol = market['symbol']
         amountString = self.safe_string_2(trade, 'qty', 'exec_qty')
         priceString = self.safe_string_2(trade, 'exec_price', 'price')
-        cost = self.safe_number(trade, 'exec_value')
-        amount = self.parse_number(amountString)
-        price = self.parse_number(priceString)
-        if cost is None:
-            cost = self.parse_number(Precise.string_mul(priceString, amountString))
+        costString = self.safe_string(trade, 'exec_value')
         timestamp = self.parse8601(self.safe_string(trade, 'time'))
         if timestamp is None:
             timestamp = self.safe_integer(trade, 'trade_time_ms')
         side = self.safe_string_lower(trade, 'side')
         lastLiquidityInd = self.safe_string(trade, 'last_liquidity_ind')
         takerOrMaker = 'maker' if (lastLiquidityInd == 'AddedLiquidity') else 'taker'
-        feeCost = self.safe_number(trade, 'exec_fee')
+        feeCostString = self.safe_string(trade, 'exec_fee')
         fee = None
-        if feeCost is not None:
+        if feeCostString is not None:
             feeCurrencyCode = market['base'] if market['inverse'] else market['quote']
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
-                'rate': self.safe_number(trade, 'fee_rate'),
+                'rate': self.safe_string(trade, 'fee_rate'),
             }
-        return {
+        return self.safe_trade({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -1013,11 +1206,11 @@ class bybit(Exchange):
             'type': self.safe_string_lower(trade, 'order_type'),
             'side': side,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': costString,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -1101,7 +1294,25 @@ class bybit(Exchange):
         timestamp = self.safe_timestamp(response, 'time_now')
         return self.parse_order_book(result, symbol, timestamp, 'Buy', 'Sell', 'price', 'size')
 
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+        }
+        balances = self.safe_value(response, 'result', {})
+        currencyIds = list(balances.keys())
+        for i in range(0, len(currencyIds)):
+            currencyId = currencyIds[i]
+            balance = balances[currencyId]
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'available_balance')
+            account['used'] = self.safe_string(balance, 'used_margin')
+            account['total'] = self.safe_string(balance, 'equity')
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
+        # note: any funds in the 'spot' account will not be returned or visible from self endpoint
         await self.load_markets()
         request = {}
         coin = self.safe_string(params, 'coin')
@@ -1141,21 +1352,7 @@ class bybit(Exchange):
         #         rate_limit: 120
         #     }
         #
-        result = {
-            'info': response,
-        }
-        balances = self.safe_value(response, 'result', {})
-        currencyIds = list(balances.keys())
-        for i in range(0, len(currencyIds)):
-            currencyId = currencyIds[i]
-            balance = balances[currencyId]
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'available_balance')
-            account['used'] = self.safe_string(balance, 'used_margin')
-            account['total'] = self.safe_string(balance, 'equity')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def parse_order_status(self, status):
         statuses = {
@@ -1302,12 +1499,11 @@ class bybit(Exchange):
             lastTradeTimestamp = None
         status = self.parse_order_status(self.safe_string_2(order, 'order_status', 'stop_order_status'))
         side = self.safe_string_lower(order, 'side')
-        feeCostString = self.safe_string(order, 'cum_exec_fee')
-        feeCost = self.parse_number(Precise.string_abs(feeCostString))
+        feeCostString = Precise.string_abs(self.safe_string(order, 'cum_exec_fee'))
         fee = None
-        if feeCost is not None:
+        if feeCostString is not None:
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrency,
             }
         clientOrderId = self.safe_string(order, 'order_link_id')
@@ -1316,7 +1512,7 @@ class bybit(Exchange):
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'time_in_force'))
         stopPrice = self.safe_number_2(order, 'trigger_price', 'stop_px')
         postOnly = (timeInForce == 'PO')
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1512,7 +1708,8 @@ class bybit(Exchange):
                     method = 'futuresPrivatePostStopOrderCreate'
                 request['stop_px'] = float(self.price_to_precision(symbol, stopPx))
                 request['base_price'] = float(self.price_to_precision(symbol, basePrice))
-                params = self.omit(params, ['stop_px', 'stopPrice', 'base_price'])
+                request['trigger_by'] = 'LastPrice'
+                params = self.omit(params, ['stop_px', 'stopPrice', 'base_price', 'trigger_by'])
         elif basePrice is not None:
             raise ArgumentsRequired(self.id + ' createOrder() requires both the stop_px and base_price params for a conditional ' + type + ' order')
         response = await getattr(self, method)(self.extend(request, params))
@@ -1929,6 +2126,8 @@ class bybit(Exchange):
         return await self.fetch_my_trades(symbol, since, limit, self.extend(request, params))
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
+        if symbol is None:
+            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
         await self.load_markets()
         request = {
             # 'order_id': 'f185806b-b801-40ff-adec-52289370ed62',  # if not provided will return user's trading records
@@ -1938,16 +2137,12 @@ class bybit(Exchange):
             # 'limit' 20,  # max 50
         }
         market = None
-        if symbol is None:
-            orderId = self.safe_string(params, 'order_id')
-            if orderId is None:
-                raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument or an order_id param')
-            else:
-                request['order_id'] = orderId
-                params = self.omit(params, 'order_id')
-        else:
-            market = self.market(symbol)
-            request['symbol'] = market['id']
+        orderId = self.safe_string(params, 'order_id')
+        if orderId is not None:
+            request['order_id'] = orderId
+            params = self.omit(params, 'order_id')
+        market = self.market(symbol)
+        request['symbol'] = market['id']
         if since is not None:
             request['start_time'] = since
         if limit is not None:
@@ -2224,6 +2419,7 @@ class bybit(Exchange):
             'txid': self.safe_string(transaction, 'tx_id'),
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'address': address,
             'addressTo': None,
             'addressFrom': None,
@@ -2382,70 +2578,6 @@ class bybit(Exchange):
         #
         return self.safe_value(response, 'result')
 
-    def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        type = self.safe_string(api, 0)
-        section = self.safe_string(api, 1)
-        if type == 'spot':
-            if section == 'public':
-                section = 'v1'
-            else:
-                section += '/v1'
-        url = self.implode_hostname(self.urls['api'][type])
-        request = '/' + type + '/' + section + '/' + path
-        if (type == 'spot') or (type == 'quote'):
-            if params:
-                request += '?' + self.rawencode(params)
-        elif section == 'public':
-            if params:
-                request += '?' + self.rawencode(params)
-        elif type == 'public':
-            if params:
-                request += '?' + self.rawencode(params)
-        else:
-            self.check_required_credentials()
-            timestamp = self.nonce()
-            query = self.extend(params, {
-                'api_key': self.apiKey,
-                'recv_window': self.options['recvWindow'],
-                'timestamp': timestamp,
-            })
-            sortedQuery = self.keysort(query)
-            auth = self.rawencode(sortedQuery)
-            signature = self.hmac(self.encode(auth), self.encode(self.secret))
-            if method == 'POST':
-                body = self.json(self.extend(query, {
-                    'sign': signature,
-                }))
-                headers = {
-                    'Content-Type': 'application/json',
-                }
-            else:
-                request += '?' + self.urlencode(sortedQuery) + '&sign=' + signature
-        url += request
-        return {'url': url, 'method': method, 'body': body, 'headers': headers}
-
-    def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
-        if not response:
-            return  # fallback to default error handler
-        #
-        #     {
-        #         ret_code: 10001,
-        #         ret_msg: 'ReadMapCB: expect {or n, but found \u0000, error ' +
-        #         'found in  #0 byte of ...||..., bigger context ' +
-        #         '...||...',
-        #         ext_code: '',
-        #         ext_info: '',
-        #         result: null,
-        #         time_now: '1583934106.590436'
-        #     }
-        #
-        errorCode = self.safe_string(response, 'ret_code')
-        if errorCode != '0':
-            feedback = self.id + ' ' + body
-            self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
-            self.throw_broadly_matched_exception(self.exceptions['broad'], body, feedback)
-            raise ExchangeError(feedback)  # unknown message
-
     async def set_margin_mode(self, marginType, symbol=None, params={}):
         #
         # {
@@ -2532,3 +2664,94 @@ class bybit(Exchange):
             request['buy_leverage'] = buy_leverage
             request['sell_leverage'] = sell_leverage
         return await getattr(self, method)(self.extend(request, params))
+
+    def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
+        url = None
+        if isinstance(api, list):
+            type = self.safe_string(api, 0)
+            section = self.safe_string(api, 1)
+            if type == 'spot':
+                if section == 'public':
+                    section = 'v1'
+                else:
+                    section += '/v1'
+            url = self.implode_hostname(self.urls['api'][type])
+            request = '/' + type + '/' + section + '/' + path
+            if (type == 'spot') or (type == 'quote'):
+                if params:
+                    request += '?' + self.rawencode(params)
+            elif section == 'public':
+                if params:
+                    request += '?' + self.rawencode(params)
+            elif type == 'public':
+                if params:
+                    request += '?' + self.rawencode(params)
+            else:
+                self.check_required_credentials()
+                timestamp = self.nonce()
+                query = self.extend(params, {
+                    'api_key': self.apiKey,
+                    'recv_window': self.options['recvWindow'],
+                    'timestamp': timestamp,
+                })
+                sortedQuery = self.keysort(query)
+                auth = self.rawencode(sortedQuery)
+                signature = self.hmac(self.encode(auth), self.encode(self.secret))
+                if method == 'POST':
+                    body = self.json(self.extend(query, {
+                        'sign': signature,
+                    }))
+                    headers = {
+                        'Content-Type': 'application/json',
+                    }
+                else:
+                    request += '?' + self.urlencode(sortedQuery) + '&sign=' + signature
+            url += request
+        else:
+            url = self.implode_hostname(self.urls['api'][api]) + '/' + path
+            if api == 'public':
+                if params:
+                    url += '?' + self.rawencode(params)
+            elif api == 'private':
+                self.check_required_credentials()
+                timestamp = self.nonce()
+                query = self.extend(params, {
+                    'api_key': self.apiKey,
+                    'recv_window': self.options['recvWindow'],
+                    'timestamp': timestamp,
+                })
+                sortedQuery = self.keysort(query)
+                auth = self.rawencode(sortedQuery)
+                signature = self.hmac(self.encode(auth), self.encode(self.secret))
+                if method == 'POST':
+                    body = self.json(self.extend(query, {
+                        'sign': signature,
+                    }))
+                    headers = {
+                        'Content-Type': 'application/json',
+                    }
+                else:
+                    url += '?' + self.urlencode(sortedQuery) + '&sign=' + signature
+        return {'url': url, 'method': method, 'body': body, 'headers': headers}
+
+    def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
+        if not response:
+            return  # fallback to default error handler
+        #
+        #     {
+        #         ret_code: 10001,
+        #         ret_msg: 'ReadMapCB: expect {or n, but found \u0000, error ' +
+        #         'found in  #0 byte of ...||..., bigger context ' +
+        #         '...||...',
+        #         ext_code: '',
+        #         ext_info: '',
+        #         result: null,
+        #         time_now: '1583934106.590436'
+        #     }
+        #
+        errorCode = self.safe_string(response, 'ret_code')
+        if errorCode != '0':
+            feedback = self.id + ' ' + body
+            self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
+            self.throw_broadly_matched_exception(self.exceptions['broad'], body, feedback)
+            raise ExchangeError(feedback)  # unknown message

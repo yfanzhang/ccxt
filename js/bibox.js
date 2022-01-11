@@ -39,7 +39,6 @@ module.exports = class bibox extends Exchange {
                 'fetchTickers': true,
                 'fetchTrades': true,
                 'fetchWithdrawals': true,
-                'publicAPI': undefined,
                 'withdraw': true,
             },
             'timeframes': {
@@ -142,9 +141,6 @@ module.exports = class bibox extends Exchange {
                 'PAI': 'PCHAIN',
                 'REVO': 'Revo Network',
                 'TERN': 'Ternio-ERC20',
-            },
-            'options': {
-                'fetchCurrencies': 'fetchCurrenciesPrivate', // or 'fetchCurrenciesPrivate' with apiKey and secret
             },
         });
     }
@@ -454,8 +450,11 @@ module.exports = class bibox extends Exchange {
     }
 
     async fetchCurrencies (params = {}) {
-        const method = this.safeString (this.options, 'fetchCurrencies', 'fetchCurrenciesPublic');
-        return await this[method] (params);
+        if (this.checkRequiredCredentials (false)) {
+            return await this.fetchCurrenciesPrivate (params);
+        } else {
+            return await this.fetchCurrenciesPublic (params);
+        }
     }
 
     async fetchCurrenciesPublic (params = {}) {
@@ -500,6 +499,8 @@ module.exports = class bibox extends Exchange {
                 'info': currency,
                 'name': name,
                 'active': active,
+                'deposit': deposit,
+                'withdraw': withdraw,
                 'fee': undefined,
                 'precision': precision,
                 'limits': {
@@ -518,7 +519,7 @@ module.exports = class bibox extends Exchange {
     }
 
     async fetchCurrenciesPrivate (params = {}) {
-        if (!this.apiKey || !this.secret) {
+        if (!this.checkRequiredCredentials (false)) {
             throw new AuthenticationError (this.id + " fetchCurrencies is an authenticated endpoint, therefore it requires 'apiKey' and 'secret' credentials. If you don't need currency details, set exchange.has['fetchCurrencies'] = false before calling its methods.");
         }
         const request = {
@@ -613,6 +614,24 @@ module.exports = class bibox extends Exchange {
         return result;
     }
 
+    parseBalance (response) {
+        const outerResult = this.safeValue (response, 'result');
+        const firstResult = this.safeValue (outerResult, 0, {});
+        const innerResult = this.safeValue (firstResult, 'result');
+        const result = { 'info': response };
+        const assetsList = this.safeValue (innerResult, 'assets_list', []);
+        for (let i = 0; i < assetsList.length; i++) {
+            const balance = assetsList[i];
+            const currencyId = this.safeString (balance, 'coin_symbol');
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['free'] = this.safeString (balance, 'balance');
+            account['used'] = this.safeString (balance, 'freeze');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const type = this.safeString (params, 'type', 'assets');
@@ -643,21 +662,7 @@ module.exports = class bibox extends Exchange {
         //         ]
         //     }
         //
-        const outerResult = this.safeValue (response, 'result');
-        const firstResult = this.safeValue (outerResult, 0, {});
-        const innerResult = this.safeValue (firstResult, 'result');
-        const result = { 'info': response };
-        const assetsList = this.safeValue (innerResult, 'assets_list', []);
-        for (let i = 0; i < assetsList.length; i++) {
-            const balance = assetsList[i];
-            const currencyId = this.safeString (balance, 'coin_symbol');
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['free'] = this.safeString (balance, 'balance');
-            account['used'] = this.safeString (balance, 'freeze');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchDeposits (code = undefined, since = undefined, limit = undefined, params = {}) {
@@ -827,8 +832,13 @@ module.exports = class bibox extends Exchange {
             'txid': undefined,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'address': address,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': tag,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'type': type,
             'amount': amount,
             'currency': code,
@@ -994,7 +1004,7 @@ module.exports = class bibox extends Exchange {
                 'currency': undefined,
             };
         }
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,

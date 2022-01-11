@@ -629,9 +629,7 @@ class gemini extends Exchange {
         return $this->parse_trades($response, $market, $since, $limit);
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privatePostV1Balances ($params);
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($response); $i++) {
             $balance = $response[$i];
@@ -642,7 +640,13 @@ class gemini extends Exchange {
             $account['total'] = $this->safe_string($balance, 'amount');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privatePostV1Balances ($params);
+        return $this->parse_balance($response);
     }
 
     public function parse_order($order, $market = null) {
@@ -673,7 +677,7 @@ class gemini extends Exchange {
         $id = $this->safe_string($order, 'order_id');
         $side = $this->safe_string_lower($order, 'side');
         $clientOrderId = $this->safe_string($order, 'client_order_id');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,
@@ -723,11 +727,13 @@ class gemini extends Exchange {
             throw new ExchangeError($this->id . ' allows limit orders only');
         }
         $nonce = $this->nonce();
+        $amountString = $this->amount_to_precision($symbol, $amount);
+        $priceString = $this->price_to_precision($symbol, $price);
         $request = array(
             'client_order_id' => (string) $nonce,
             'symbol' => $this->market_id($symbol),
-            'amount' => (string) $amount,
-            'price' => (string) $price,
+            'amount' => $amountString,
+            'price' => $priceString,
             'side' => $side,
             'type' => 'exchange limit', // gemini allows limit orders only
         );
@@ -824,8 +830,13 @@ class gemini extends Exchange {
             'txid' => $this->safe_string($transaction, 'txHash'),
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'address' => $address,
+            'addressTo' => null,
+            'addressFrom' => null,
             'tag' => null, // or is it defined?
+            'tagTo' => null,
+            'tagFrom' => null,
             'type' => $type, // direction of the $transaction, ('deposit' | 'withdraw')
             'amount' => $this->safe_number($transaction, 'amount'),
             'currency' => $code,
@@ -868,7 +879,7 @@ class gemini extends Exchange {
             'network' => $networkId,
         );
         $response = yield $this->privatePostV1AddressesNetwork (array_merge($request, $params));
-        $results = $this->parse_deposit_addresses($response, [$code], false, array( 'network' => $networkCode, 'currency' => $code ));
+        $results = $this->parse_deposit_addresses($response, array( $code ), false, array( 'network' => $networkCode, 'currency' => $code ));
         return $this->group_by($results, 'network');
     }
 

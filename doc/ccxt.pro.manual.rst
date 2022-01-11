@@ -2,7 +2,7 @@
 Manual
 ======
 
-The CCXT Pro stack is built upon `CCXT <https://ccxt.trade>`__ and extends the core CCXT classes, using:
+The CCXT Pro stack is built upon `CCXT <https://ccxt.com>`__ and extends the core CCXT classes, using:
 
 
  * JavaScript prototype-level mixins
@@ -52,9 +52,9 @@ The CCXT Pro heavily relies on the transpiler of CCXT for `multilanguage support
        +=============================================================+
 
 Exchanges
-=========
+---------
 
-The CCXT Pro library currently supports the following 35 cryptocurrency exchange markets and WebSocket trading APIs:
+The CCXT Pro library currently supports the following 36 cryptocurrency exchange markets and WebSocket trading APIs:
 
 .. list-table::
    :header-rows: 1
@@ -629,6 +629,21 @@ The CCXT Pro library currently supports the following 35 cryptocurrency exchange
           :target: https://ccxt.pro
           :alt: CCXT Pro
      
+   * - .. image:: https://user-images.githubusercontent.com/1294454/146103275-c39a34d9-68a4-4cd2-b1f1-c684548d311b.jpg
+          :target: https://trade.zipmex.com/global/accounts/sign-up?aff=KLm7HyCsvN
+          :alt: zipmex
+     
+     - zipmex
+     - `Zipmex <https://trade.zipmex.com/global/accounts/sign-up?aff=KLm7HyCsvN>`__
+     - .. image:: https://img.shields.io/badge/*-lightgray
+          :target: https://apidoc.ndax.io/
+          :alt: API Version *
+     
+     - 
+     - .. image:: https://img.shields.io/badge/CCXT-Pro-black
+          :target: https://ccxt.pro
+          :alt: CCXT Pro
+     
 
 
 This is the list of exchanges in CCXT Pro with support for WebSockets APIs. This list will be updated with new exchanges on a regular basis.
@@ -636,7 +651,7 @@ This is the list of exchanges in CCXT Pro with support for WebSockets APIs. This
 Full list of exchanges available in CCXT via REST: `Supported Cryptocurrency Exchange Markets <https://github.com/ccxt/ccxt/#supported-cryptocurrency-exchange-markets>`__.
 
 Usage
-=====
+-----
 
 .. code-block:: diff
 

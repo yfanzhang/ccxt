@@ -12,7 +12,7 @@ module.exports = class bl3p extends Exchange {
         return this.deepExtend (super.describe (), {
             'id': 'bl3p',
             'name': 'BL3P',
-            'countries': [ 'NL', 'EU' ], // Netherlands, EU
+            'countries': [ 'NL' ], // Netherlands
             'rateLimit': 1000,
             'version': '1',
             'comment': 'An exchange market by BitonicNL',
@@ -67,9 +67,7 @@ module.exports = class bl3p extends Exchange {
         });
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privatePostGENMKTMoneyInfo (params);
+    parseBalance (response) {
         const data = this.safeValue (response, 'data', {});
         const wallets = this.safeValue (data, 'wallets');
         const result = { 'info': data };
@@ -86,7 +84,13 @@ module.exports = class bl3p extends Exchange {
             account['total'] = this.safeString (balance, 'value');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privatePostGENMKTMoneyInfo (params);
+        return this.parseBalance (response);
     }
 
     parseBidAsk (bidask, priceKey = 0, amountKey = 1) {

@@ -208,9 +208,7 @@ class therock(Exchange):
                 })
         return result
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.privateGetBalances(params)
+    def parse_balance(self, response):
         balances = self.safe_value(response, 'balances', [])
         result = {'info': response}
         for i in range(0, len(balances)):
@@ -221,7 +219,12 @@ class therock(Exchange):
             account['free'] = self.safe_string(balance, 'trading_balance')
             account['total'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.privateGetBalances(params)
+        return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -718,12 +721,14 @@ class therock(Exchange):
         amount = self.safe_number(transaction, 'price')
         timestamp = self.parse8601(self.safe_string(transaction, 'date'))
         status = 'ok'
+        network = self.safe_string(detail, 'method')
         # todo parse tags
         return {
             'info': transaction,
             'id': id,
             'currency': code,
             'amount': amount,
+            'network': network,
             'addressFrom': None,
             'addressTo': address,
             'address': address,

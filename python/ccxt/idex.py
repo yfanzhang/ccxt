@@ -62,13 +62,11 @@ class idex(Exchange):
             },
             'urls': {
                 'test': {
-                    'public': 'https://api-sandbox.idex.io',
-                    'private': 'https://api-sandbox.idex.io',
+                    'MATIC': 'https://api-sandbox-matic.idex.io',
                 },
                 'logo': 'https://user-images.githubusercontent.com/51840849/94481303-2f222100-01e0-11eb-97dd-bc14c5943a86.jpg',
                 'api': {
-                    'ETH': 'https://api-eth.idex.io',
-                    'BSC': 'https://api-bsc.idex.io',
+                    'MATIC': 'https://api-matic.idex.io',
                 },
                 'www': 'https://idex.io',
                 'doc': [
@@ -114,7 +112,7 @@ class idex(Exchange):
             'options': {
                 'defaultTimeInForce': 'gtc',
                 'defaultSelfTradePrevention': 'cn',
-                'network': 'ETH',  # also supports BSC
+                'network': 'MATIC',
             },
             'exceptions': {
                 'INVALID_ORDER_QUANTITY': InvalidOrder,
@@ -193,25 +191,41 @@ class idex(Exchange):
             minCost = None
             if quote == 'ETH':
                 minCost = minCostETH
-            precision = {
-                'amount': int(basePrecisionString),
-                'price': int(quotePrecisionString),
-            }
             result.append({
-                'symbol': symbol,
                 'id': marketId,
+                'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'type': 'spot',
                 'spot': True,
-                'active': active,
-                'info': entry,
-                'precision': precision,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'contract': False,
+                'linear': None,
+                'inverse': None,
                 'taker': taker,
                 'maker': maker,
+                'contractSize': None,
+                'active': active,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'amount': int(basePrecisionString),
+                    'price': int(quotePrecisionString),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': None,
+                        'max': None,
+                    },
                     'amount': {
                         'min': self.parse_number(basePrecision),
                         'max': None,
@@ -225,6 +239,7 @@ class idex(Exchange):
                         'max': None,
                     },
                 },
+                'info': entry,
             })
         return result
 
@@ -566,6 +581,23 @@ class idex(Exchange):
             }
         return result
 
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+            'timestamp': None,
+            'datetime': None,
+        }
+        for i in range(0, len(response)):
+            entry = response[i]
+            currencyId = self.safe_string(entry, 'asset')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['total'] = self.safe_string(entry, 'quantity')
+            account['free'] = self.safe_string(entry, 'availableForTrade')
+            account['used'] = self.safe_string(entry, 'locked')
+            result[code] = account
+        return self.safe_balance(result)
+
     def fetch_balance(self, params={}):
         self.check_required_credentials()
         self.load_markets()
@@ -596,21 +628,7 @@ class idex(Exchange):
                 response = self.privateGetBalances(extendedRequest)
             else:
                 raise e
-        result = {
-            'info': response,
-            'timestamp': None,
-            'datetime': None,
-        }
-        for i in range(0, len(response)):
-            entry = response[i]
-            currencyId = self.safe_string(entry, 'asset')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['total'] = self.safe_string(entry, 'quantity')
-            account['free'] = self.safe_string(entry, 'availableForTrade')
-            account['used'] = self.safe_string(entry, 'locked')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         self.check_required_credentials()
@@ -812,13 +830,13 @@ class idex(Exchange):
         marketId = self.safe_string(order, 'market')
         side = self.safe_string(order, 'side')
         symbol = self.safe_symbol(marketId, market, '-')
-        trades = self.parse_trades(fills, market)
         type = self.safe_string(order, 'type')
-        amount = self.safe_number(order, 'originalQuantity')
-        filled = self.safe_number(order, 'executedQuantity')
-        average = self.safe_number(order, 'avgExecutionPrice')
-        price = self.safe_number(order, 'price')
+        amount = self.safe_string(order, 'originalQuantity')
+        filled = self.safe_string(order, 'executedQuantity')
+        average = self.safe_string(order, 'avgExecutionPrice')
+        price = self.safe_string(order, 'price')
         rawStatus = self.safe_string(order, 'status')
+        timeInForce = self.safe_string_upper(order, 'timeInForce')
         status = self.parse_order_status(rawStatus)
         return self.safe_order({
             'info': order,
@@ -829,7 +847,7 @@ class idex(Exchange):
             'lastTradeTimestamp': None,
             'symbol': symbol,
             'type': type,
-            'timeInForce': None,
+            'timeInForce': timeInForce,
             'postOnly': None,
             'side': side,
             'price': price,
@@ -841,8 +859,8 @@ class idex(Exchange):
             'remaining': None,
             'status': status,
             'fee': None,
-            'trades': trades,
-        })
+            'trades': fills,
+        }, market)
 
     def associate_wallet(self, walletAddress, params={}):
         nonce = self.uuidv1()
@@ -913,7 +931,11 @@ class idex(Exchange):
         sideEnum = 0 if (side == 'buy') else 1
         walletBytes = self.remove0x_prefix(self.walletAddress)
         network = self.safe_string(self.options, 'network', 'ETH')
-        orderVersion = 1 if (network == 'ETH') else 2
+        orderVersion = self.get_supported_mapping(network, {
+            'ETH': 1,
+            'BSC': 2,
+            'MATIC': 4,
+        })
         amountString = self.amount_to_precision(symbol, amount)
         # https://docs.idex.io/#time-in-force
         timeInForceEnums = {
@@ -1206,8 +1228,13 @@ class idex(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'address': None,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': None,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': amount,
             'currency': code,

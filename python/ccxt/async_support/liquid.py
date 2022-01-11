@@ -459,6 +459,32 @@ class liquid(Exchange):
             })
         return result
 
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+            'timestamp': None,
+            'datetime': None,
+        }
+        crypto = self.safe_value(response, 'crypto_accounts', [])
+        fiat = self.safe_value(response, 'fiat_accounts', [])
+        for i in range(0, len(crypto)):
+            balance = crypto[i]
+            currencyId = self.safe_string(balance, 'currency')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['total'] = self.safe_string(balance, 'balance')
+            account['used'] = self.safe_string(balance, 'reserved_balance')
+            result[code] = account
+        for i in range(0, len(fiat)):
+            balance = fiat[i]
+            currencyId = self.safe_string(balance, 'currency')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['total'] = self.safe_string(balance, 'balance')
+            account['used'] = self.safe_string(balance, 'reserved_balance')
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         await self.load_markets()
         response = await self.privateGetAccounts(params)
@@ -496,30 +522,7 @@ class liquid(Exchange):
         #         ]
         #     }
         #
-        result = {
-            'info': response,
-            'timestamp': None,
-            'datetime': None,
-        }
-        crypto = self.safe_value(response, 'crypto_accounts', [])
-        fiat = self.safe_value(response, 'fiat_accounts', [])
-        for i in range(0, len(crypto)):
-            balance = crypto[i]
-            currencyId = self.safe_string(balance, 'currency')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['total'] = self.safe_string(balance, 'balance')
-            account['used'] = self.safe_string(balance, 'reserved_balance')
-            result[code] = account
-        for i in range(0, len(fiat)):
-            balance = fiat[i]
-            currencyId = self.safe_string(balance, 'currency')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['total'] = self.safe_string(balance, 'balance')
-            account['used'] = self.safe_string(balance, 'reserved_balance')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -940,28 +943,31 @@ class liquid(Exchange):
         currency = self.currency(code)
         request = {
             # 'auth_code': '',  # optional 2fa code
-            'currency': currency['id'],
-            'address': address,
-            'amount': amount,
-            # 'payment_id': tag,  # for XRP only
-            # 'memo_type': 'text',  # 'text', 'id' or 'hash', for XLM only
-            # 'memo_value': tag,  # for XLM only
+            'crypto_withdrawal': {
+                'currency': currency['id'],
+                'address': address,
+                'amount': amount,
+                # 'payment_id': tag,  # for XRP only
+                # 'memo_type': 'text',  # 'text', 'id' or 'hash', for XLM only
+                # 'memo_value': tag,  # for XLM only
+            },
         }
         if tag is not None:
             if code == 'XRP':
-                request['payment_id'] = tag
+                request['crypto_withdrawal']['payment_id'] = tag
             elif code == 'XLM':
-                request['memo_type'] = 'text'  # overrideable via params
-                request['memo_value'] = tag
+                request['crypto_withdrawal']['memo_type'] = 'text'  # overrideable via params
+                request['crypto_withdrawal']['memo_value'] = tag
             else:
                 raise NotSupported(self.id + ' withdraw() only supports a tag along the address for XRP or XLM')
         networks = self.safe_value(self.options, 'networks', {})
-        network = self.safe_string_upper(params, 'network')  # self line allows the user to specify either ERC20 or ETH
+        paramsCwArray = self.safe_value(params, 'crypto_withdrawal', {})
+        network = self.safe_string_upper(paramsCwArray, 'network')  # self line allows the user to specify either ERC20 or ETH
         network = self.safe_string(networks, network, network)  # handle ERC20>ETH alias
         if network is not None:
-            request['network'] = network
-            params = self.omit(params, 'network')
-        response = await self.privatePostCryptoWithdrawals(self.extend(request, params))
+            request['crypto_withdrawal']['network'] = network
+            params['crypto_withdrawal'] = self.omit(params['crypto_withdrawal'], 'network')
+        response = await self.privatePostCryptoWithdrawals(self.deep_extend(request, params))
         #
         #     {
         #         "id": 1353,
@@ -1084,14 +1090,20 @@ class liquid(Exchange):
         amountString = self.safe_string(transaction, 'amount')
         feeCostString = self.safe_string(transaction, 'withdrawal_fee')
         amount = self.parse_number(Precise.string_sub(amountString, feeCostString))
+        network = self.safe_string(transaction, 'chain_name')
         return {
             'info': transaction,
             'id': id,
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': network,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': amount,
             'currency': code,

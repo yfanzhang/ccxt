@@ -9,7 +9,6 @@ from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import RateLimitExceeded
-from ccxt.base.precise import Precise
 
 
 class coinfalcon(Exchange):
@@ -189,25 +188,48 @@ class coinfalcon(Exchange):
         return self.parse_order_book(data, symbol, None, 'bids', 'asks', 'price', 'size')
 
     def parse_trade(self, trade, market=None):
+        #
+        # fetchTrades(public)
+        #
+        #      {
+        #          "id":"5ec36295-5c8d-4874-8d66-2609d4938557",
+        #          "price":"4050.06","size":"0.0044",
+        #          "market_name":"ETH-USDT",
+        #          "side":"sell",
+        #          "created_at":"2021-12-07T17:47:36.811000Z"
+        #      }
+        #
+        # fetchMyTrades(private)
+        #
+        #      {
+        #              "id": "0718d520-c796-4061-a16b-915cd13f20c6",
+        #              "price": "0.00000358",
+        #              "size": "50.0",
+        #              "market_name": "DOGE-BTC",
+        #              "order_id": "ff2616d8-58d4-40fd-87ae-937c73eb6f1c",
+        #              "side": "buy",
+        #              "fee': "0.00000036",
+        #              "fee_currency_code": "btc",
+        #              "liquidity": "T",
+        #              "created_at": "2021-12-08T18:26:33.840000Z"
+        #      }
+        #
         timestamp = self.parse8601(self.safe_string(trade, 'created_at'))
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'size')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         symbol = market['symbol']
         tradeId = self.safe_string(trade, 'id')
         side = self.safe_string(trade, 'side')
         orderId = self.safe_string(trade, 'order_id')
         fee = None
-        feeCost = self.safe_number(trade, 'fee')
-        if feeCost is not None:
+        feeCostString = self.safe_string(trade, 'fee')
+        if feeCostString is not None:
             feeCurrencyCode = self.safe_string(trade, 'fee_currency_code')
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': self.safe_currency_code(feeCurrencyCode),
             }
-        return {
+        return self.safe_trade({
             'info': trade,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -217,11 +239,11 @@ class coinfalcon(Exchange):
             'type': None,
             'side': side,
             'takerOrMaker': None,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
-        }
+        }, market)
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         if symbol is None:
@@ -236,6 +258,24 @@ class coinfalcon(Exchange):
         if limit is not None:
             request['limit'] = limit
         response = self.privateGetUserTrades(self.extend(request, params))
+        #
+        #      {
+        #          "data": [
+        #              {
+        #                  "id": "0718d520-c796-4061-a16b-915cd13f20c6",
+        #                  "price": "0.00000358",
+        #                  "size": "50.0",
+        #                  "market_name": "DOGE-BTC",
+        #                  "order_id": "ff2616d8-58d4-40fd-87ae-937c73eb6f1c",
+        #                  "side": "buy",
+        #                  "fee': "0.00000036",
+        #                  "fee_currency_code": "btc",
+        #                  "liquidity": "T",
+        #                  "created_at": "2021-12-08T18:26:33.840000Z"
+        #              },
+        #          ]
+        #      }
+        #
         data = self.safe_value(response, 'data', [])
         return self.parse_trades(data, market, since, limit)
 
@@ -248,12 +288,23 @@ class coinfalcon(Exchange):
         if since is not None:
             request['since'] = self.iso8601(since)
         response = self.publicGetMarketsMarketTrades(self.extend(request, params))
+        #
+        #      {
+        #          "data":[
+        #              {
+        #                  "id":"5ec36295-5c8d-4874-8d66-2609d4938557",
+        #                  "price":"4050.06","size":"0.0044",
+        #                  "market_name":"ETH-USDT",
+        #                  "side":"sell",
+        #                  "created_at":"2021-12-07T17:47:36.811000Z"
+        #              },
+        #          ]
+        #      }
+        #
         data = self.safe_value(response, 'data', [])
         return self.parse_trades(data, market, since, limit)
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.privateGetUserAccounts(params)
+    def parse_balance(self, response):
         result = {'info': response}
         balances = self.safe_value(response, 'data')
         for i in range(0, len(balances)):
@@ -265,7 +316,12 @@ class coinfalcon(Exchange):
             account['used'] = self.safe_string(balance, 'hold_balance')
             account['total'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privateGetUserAccounts(params)
+        return self.parse_balance(response)
 
     def parse_order_status(self, status):
         statuses = {
@@ -298,9 +354,9 @@ class coinfalcon(Exchange):
         marketId = self.safe_string(order, 'market')
         symbol = self.safe_symbol(marketId, market, '-')
         timestamp = self.parse8601(self.safe_string(order, 'created_at'))
-        price = self.safe_string(order, 'price')
-        amount = self.safe_string(order, 'size')
-        filled = self.safe_string(order, 'size_filled')
+        priceString = self.safe_string(order, 'price')
+        amountString = self.safe_string(order, 'size')
+        filledString = self.safe_string(order, 'size_filled')
         status = self.parse_order_status(self.safe_string(order, 'status'))
         type = self.safe_string(order, 'operation_type')
         if type is not None:
@@ -308,7 +364,7 @@ class coinfalcon(Exchange):
             type = type[0]
         side = self.safe_string(order, 'order_type')
         postOnly = self.safe_value(order, 'post_only')
-        return self.safe_order2({
+        return self.safe_order({
             'id': self.safe_string(order, 'id'),
             'clientOrderId': None,
             'datetime': self.iso8601(timestamp),
@@ -319,11 +375,11 @@ class coinfalcon(Exchange):
             'timeInForce': None,
             'postOnly': postOnly,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': None,
             'cost': None,
-            'amount': amount,
-            'filled': filled,
+            'amount': amountString,
+            'filled': filledString,
             'remaining': None,
             'trades': None,
             'fee': None,
@@ -543,8 +599,13 @@ class coinfalcon(Exchange):
             'txid': txid,
             'timestamp': None,
             'datetime': None,
+            'network': None,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': amount,
             'currency': code,

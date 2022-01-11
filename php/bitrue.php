@@ -39,7 +39,6 @@ class bitrue extends Exchange {
                 'fetchFundingRateHistory' => false,
                 'fetchFundingRates' => false,
                 'fetchIndexOHLCV' => false,
-                'fetchIsolatedPositions' => false,
                 'fetchMarkets' => true,
                 'fetchMarkOHLCV' => false,
                 'fetchMyTrades' => true,
@@ -50,7 +49,7 @@ class bitrue extends Exchange {
                 'fetchOrders' => false,
                 'fetchPositions' => false,
                 'fetchPremiumIndexOHLCV' => false,
-                'fetchStatus' => false,
+                'fetchStatus' => true,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTime' => true,
@@ -331,6 +330,18 @@ class bitrue extends Exchange {
         return $this->milliseconds() - $this->options['timeDifference'];
     }
 
+    public function fetch_status($params = array ()) {
+        $response = $this->v1PublicGetPing ($params);
+        $keys = is_array($response) ? array_keys($response) : array();
+        $keysLength = is_array($keys) ? count($keys) : 0;
+        $formattedStatus = $keysLength ? 'maintenance' : 'ok';
+        $this->status = array_merge($this->status, array(
+            'status' => $formattedStatus,
+            'updated' => $this->milliseconds(),
+        ));
+        return $this->status;
+    }
+
     public function fetch_time($params = array ()) {
         $response = $this->v1PublicGetTime ($params);
         //
@@ -339,13 +350,6 @@ class bitrue extends Exchange {
         //     }
         //
         return $this->safe_integer($response, 'serverTime');
-    }
-
-    public function load_time_difference($params = array ()) {
-        $serverTime = $this->fetch_time($params);
-        $after = $this->milliseconds();
-        $this->options['timeDifference'] = $after - $serverTime;
-        return $this->options['timeDifference'];
     }
 
     public function safe_network($networkId) {
@@ -501,6 +505,8 @@ class bitrue extends Exchange {
                 'precision' => $precision,
                 'info' => $currency,
                 'active' => $active,
+                'deposit' => $enableDeposit,
+                'withdraw' => $enableWithdraw,
                 'networks' => $networks,
                 'fee' => $this->safe_number($currency, 'withdrawFee'),
                 // 'fees' => fees,
@@ -640,6 +646,26 @@ class bitrue extends Exchange {
         return $result;
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+        );
+        $timestamp = $this->safe_integer($response, 'updateTime');
+        $balances = $this->safe_value_2($response, 'balances', array());
+        for ($i = 0; $i < count($balances); $i++) {
+            $balance = $balances[$i];
+            $currencyId = $this->safe_string($balance, 'asset');
+            $code = $this->safe_currency_code($currencyId);
+            $account = $this->account();
+            $account['free'] = $this->safe_string($balance, 'free');
+            $account['used'] = $this->safe_string($balance, 'locked');
+            $result[$code] = $account;
+        }
+        $result['timestamp'] = $timestamp;
+        $result['datetime'] = $this->iso8601($timestamp);
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $this->load_markets();
         $response = $this->v1PrivateGetAccount ($params);
@@ -660,23 +686,7 @@ class bitrue extends Exchange {
         //         "canDeposit":false
         //     }
         //
-        $result = array(
-            'info' => $response,
-        );
-        $timestamp = $this->safe_integer($response, 'updateTime');
-        $balances = $this->safe_value_2($response, 'balances', array());
-        for ($i = 0; $i < count($balances); $i++) {
-            $balance = $balances[$i];
-            $currencyId = $this->safe_string($balance, 'asset');
-            $code = $this->safe_currency_code($currencyId);
-            $account = $this->account();
-            $account['free'] = $this->safe_string($balance, 'free');
-            $account['used'] = $this->safe_string($balance, 'locked');
-            $result[$code] = $account;
-        }
-        $result['timestamp'] = $timestamp;
-        $result['datetime'] = $this->iso8601($timestamp);
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -1083,7 +1093,7 @@ class bitrue extends Exchange {
         }
         $stopPriceString = $this->safe_string($order, 'stopPrice');
         $stopPrice = $this->parse_number($this->omit_zero($stopPriceString));
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,

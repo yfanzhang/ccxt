@@ -23,7 +23,6 @@ from ccxt.base.errors import NotSupported
 from ccxt.base.errors import DDoSProtection
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import InvalidNonce
-from ccxt.base.precise import Precise
 
 
 class cex(Exchange):
@@ -55,6 +54,8 @@ class cex(Exchange):
             },
             'timeframes': {
                 '1m': '1m',
+                '1h': '1h',
+                '1d': '1d',
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/27766442-8ddc33b0-5ed8-11e7-8b98-f786aef0f3c9.jpg',
@@ -258,6 +259,8 @@ class cex(Exchange):
                 'code': code,
                 'name': id,
                 'active': active,
+                'deposit': None,
+                'withdraw': None,
                 'precision': precision,
                 'fee': None,
                 'limits': {
@@ -363,9 +366,7 @@ class cex(Exchange):
             })
         return result
 
-    def fetch_balance(self, params={}):
-        self.load_markets()
-        response = self.privatePostBalance(params)
+    def parse_balance(self, response):
         result = {'info': response}
         ommited = ['username', 'timestamp']
         balances = self.omit(response, ommited)
@@ -379,7 +380,12 @@ class cex(Exchange):
             account['used'] = self.safe_string(balance, 'orders', '0')
             code = self.safe_currency_code(currencyId)
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    def fetch_balance(self, params={}):
+        self.load_markets()
+        response = self.privatePostBalance(params)
+        return self.parse_balance(response)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -500,19 +506,27 @@ class cex(Exchange):
         return self.parse_ticker(ticker, market)
 
     def parse_trade(self, trade, market=None):
+        #
+        # fetchTrades(public)
+        #
+        #      {
+        #          "type": "sell",
+        #          "date": "1638401878",
+        #          "amount": "0.401000",
+        #          "price": "249",
+        #          "tid": "11922"
+        #      }
+        #
         timestamp = self.safe_timestamp(trade, 'date')
         id = self.safe_string(trade, 'tid')
         type = None
         side = self.safe_string(trade, 'type')
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'amount')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         symbol = None
         if market is not None:
             symbol = market['symbol']
-        return {
+        return self.safe_trade({
             'info': trade,
             'id': id,
             'timestamp': timestamp,
@@ -522,11 +536,11 @@ class cex(Exchange):
             'side': side,
             'order': None,
             'takerOrMaker': None,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': None,
-        }
+        }, market)
 
     def fetch_trades(self, symbol, since=None, limit=None, params={}):
         self.load_markets()

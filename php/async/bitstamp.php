@@ -33,7 +33,6 @@ class bitstamp extends Exchange {
                 'fetchBorrowRates' => false,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
-                'fetchFees' => true,
                 'fetchFundingFees' => true,
                 'fetchIndexOHLCV' => false,
                 'fetchLedger' => true,
@@ -201,6 +200,18 @@ class bitstamp extends Exchange {
                         'ada_address/',
                         'slp_withdrawal/',
                         'slp_address/',
+                        'ftm_withdrawal/',
+                        'ftm_address/',
+                        'perp_withdrawal/',
+                        'perp_address/',
+                        'dydx_withdrawal/',
+                        'dydx_address/',
+                        'gala_withdrawal/',
+                        'gala_address/',
+                        'shib_withdrawal/',
+                        'shib_address/',
+                        'amp_withdrawal/',
+                        'amp_address/',
                         'transfer-to-main/',
                         'transfer-from-main/',
                         'withdrawal-requests/',
@@ -291,7 +302,7 @@ class bitstamp extends Exchange {
                     'Please update your profile with your FATCA information, before using API.' => '\\ccxt\\PermissionDenied',
                     'Order not found' => '\\ccxt\\OrderNotFound',
                     'Price is more than 20% below market price.' => '\\ccxt\\InvalidOrder',
-                    'Bitstamp.net is under scheduled maintenance.' => '\\ccxt\\OnMaintenance', // array( "error" => "Bitstamp.net is under scheduled maintenance. We'll be back soon." )
+                    "Bitstamp.net is under scheduled maintenance. We'll be back soon." => '\\ccxt\\OnMaintenance', // array( "error" => "Bitstamp.net is under scheduled maintenance. We'll be back soon." )
                     'Order could not be placed.' => '\\ccxt\\ExchangeNotAvailable', // Order could not be placed (perhaps due to internal error or trade halt). Please retry placing order.
                     'Invalid offset.' => '\\ccxt\\BadRequest',
                 ),
@@ -316,7 +327,7 @@ class bitstamp extends Exchange {
             $base = $this->safe_currency_code($base);
             $quote = $this->safe_currency_code($quote);
             $symbol = $base . '/' . $quote;
-            $symbolId = $baseId . '_' . $quoteId;
+            $marketId = $baseId . '_' . $quoteId;
             $id = $this->safe_string($market, 'url_symbol');
             $amountPrecisionString = $this->safe_string($market, 'base_decimals');
             $pricePrecisionString = $this->safe_string($market, 'counter_decimals');
@@ -339,7 +350,7 @@ class bitstamp extends Exchange {
                 'quote' => $quote,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
-                'symbolId' => $symbolId,
+                'marketId' => $marketId,
                 'info' => $market,
                 'type' => 'spot',
                 'spot' => true,
@@ -377,6 +388,8 @@ class bitstamp extends Exchange {
             'type' => $currencyType,
             'name' => $name,
             'active' => true,
+            'deposit' => null,
+            'withdraw' => null,
             'fee' => $this->safe_number($description['fees']['funding']['withdraw'], $code),
             'precision' => $precision,
             'limits' => array(
@@ -419,6 +432,20 @@ class bitstamp extends Exchange {
 
     public function fetch_currencies($params = array ()) {
         $response = yield $this->fetch_markets_from_cache($params);
+        //
+        //     array(
+        //         array(
+        //             "trading" => "Enabled",
+        //             "base_decimals" => 8,
+        //             "url_symbol" => "btcusd",
+        //             "name" => "BTC/USD",
+        //             "instant_and_market_orders" => "Enabled",
+        //             "minimum_order" => "20.0 USD",
+        //             "counter_decimals" => 2,
+        //             "description" => "Bitcoin / U.S. dollar"
+        //         ),
+        //     )
+        //
         $result = array();
         for ($i = 0; $i < count($response); $i++) {
             $market = $response[$i];
@@ -656,7 +683,7 @@ class bitstamp extends Exchange {
         $feeCostString = $this->safe_string($trade, 'fee');
         $feeCurrency = null;
         if ($market !== null) {
-            $priceString = $this->safe_string($trade, $market['symbolId'], $priceString);
+            $priceString = $this->safe_string($trade, $market['marketId'], $priceString);
             $amountString = $this->safe_string($trade, $market['baseId'], $amountString);
             $costString = $this->safe_string($trade, $market['quoteId'], $costString);
             $feeCurrency = $market['quote'];
@@ -690,6 +717,8 @@ class bitstamp extends Exchange {
                 $side = 'sell';
             } else if ($side === '0') {
                 $side = 'buy';
+            } else {
+                $side = null;
             }
         }
         if ($costString !== null) {
@@ -813,9 +842,29 @@ class bitstamp extends Exchange {
         return $this->parse_ohlcvs($ohlc, $market, $timeframe, $since, $limit);
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        $codes = is_array($this->currencies) ? array_keys($this->currencies) : array();
+        for ($i = 0; $i < count($codes); $i++) {
+            $code = $codes[$i];
+            $currency = $this->currency($code);
+            $currencyId = $currency['id'];
+            $account = $this->account();
+            $account['free'] = $this->safe_string($response, $currencyId . '_available');
+            $account['used'] = $this->safe_string($response, $currencyId . '_reserved');
+            $account['total'] = $this->safe_string($response, $currencyId . '_balance');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         yield $this->load_markets();
-        $balance = yield $this->privatePostBalance ($params);
+        $response = yield $this->privatePostBalance ($params);
         //
         //     {
         //         "aave_available" => "0.00000000",
@@ -834,62 +883,39 @@ class bitstamp extends Exchange {
         //         "batusd_fee" => "0.000",
         //     }
         //
-        $result = array(
-            'info' => $balance,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        $codes = is_array($this->currencies) ? array_keys($this->currencies) : array();
-        for ($i = 0; $i < count($codes); $i++) {
-            $code = $codes[$i];
-            $currency = $this->currency($code);
-            $currencyId = $currency['id'];
-            $account = $this->account();
-            $account['free'] = $this->safe_string($balance, $currencyId . '_available');
-            $account['used'] = $this->safe_string($balance, $currencyId . '_reserved');
-            $account['total'] = $this->safe_string($balance, $currencyId . '_balance');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function fetch_trading_fee($symbol, $params = array ()) {
         yield $this->load_markets();
-        $request = array();
-        $method = 'privatePostBalance';
-        $market = null;
-        if ($symbol !== null) {
-            $market = $this->market($symbol);
-            $request['pair'] = $market['id'];
-            $method .= 'Pair';
-        }
-        $balance = yield $this->$method (array_merge($request, $params));
-        return array(
-            'info' => $balance,
-            'symbol' => $symbol,
-            'maker' => $balance['fee'],
-            'taker' => $balance['fee'],
+        $market = $this->market($symbol);
+        $request = array(
+            'pair' => $market['id'],
         );
+        $response = yield $this->privatePostBalancePair (array_merge($request, $params));
+        return $this->parse_trading_fee($response, $market);
     }
 
-    public function parse_trading_fee($balances, $symbol) {
-        $market = $this->market($symbol);
-        $feeString = $this->safe_string($balances, $market['id'] . '_fee');
+    public function parse_trading_fee($fee, $market = null) {
+        $market = $this->safe_market(null, $market);
+        $feeString = $this->safe_string($fee, $market['id'] . '_fee');
         $dividedFeeString = Precise::string_div($feeString, '100');
         $tradeFee = $this->parse_number($dividedFeeString);
         return array(
-            'symbol' => $symbol,
+            'info' => $fee,
+            'symbol' => $market['symbol'],
             'maker' => $tradeFee,
             'taker' => $tradeFee,
         );
     }
 
-    public function parse_trading_fees($balance) {
-        $result = array( 'info' => $balance );
-        $markets = is_array($this->markets) ? array_keys($this->markets) : array();
-        for ($i = 0; $i < count($markets); $i++) {
-            $symbol = $markets[$i];
-            $fee = $this->parse_trading_fee($balance, $symbol);
+    public function parse_trading_fees($fees) {
+        $result = array( 'info' => $fees );
+        $symbols = $this->symbols;
+        for ($i = 0; $i < count($symbols); $i++) {
+            $symbol = $symbols[$i];
+            $market = $this->market($symbol);
+            $fee = $this->parse_trading_fee($fees, $market);
             $result[$symbol] = $fee;
         }
         return $result;
@@ -897,8 +923,8 @@ class bitstamp extends Exchange {
 
     public function fetch_trading_fees($params = array ()) {
         yield $this->load_markets();
-        $balance = yield $this->privatePostBalance ($params);
-        return $this->parse_trading_fees($balance);
+        $response = yield $this->privatePostBalance ($params);
+        return $this->parse_trading_fees($response);
     }
 
     public function parse_funding_fees($balance) {
@@ -923,20 +949,6 @@ class bitstamp extends Exchange {
         yield $this->load_markets();
         $balance = yield $this->privatePostBalance ($params);
         return $this->parse_funding_fees($balance);
-    }
-
-    public function fetch_fees($params = array ()) {
-        yield $this->load_markets();
-        $balance = yield $this->privatePostBalance ($params);
-        $tradingFees = $this->parse_trading_fees($balance);
-        unset($tradingFees['info']);
-        $fundingFees = $this->parse_funding_fees($balance);
-        unset($fundingFees['info']);
-        return array(
-            'info' => $balance,
-            'trading' => $tradingFees,
-            'funding' => $fundingFees,
-        );
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -1250,6 +1262,7 @@ class bitstamp extends Exchange {
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => null,
             'addressFrom' => $addressFrom,
             'addressTo' => $addressTo,
             'address' => $address,
@@ -1328,14 +1341,9 @@ class bitstamp extends Exchange {
         $marketId = $this->safe_string_lower($order, 'currency_pair');
         $symbol = $this->safe_symbol($marketId, $market, '/');
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
-        $amount = $this->safe_number($order, 'amount');
+        $amount = $this->safe_string($order, 'amount');
         $transactions = $this->safe_value($order, 'transactions', array());
-        $trades = $this->parse_trades($transactions, $market);
-        $length = is_array($trades) ? count($trades) : 0;
-        if ($length) {
-            $symbol = $trades[0]['symbol'];
-        }
-        $price = $this->safe_number($order, 'price');
+        $price = $this->safe_string($order, 'price');
         return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1354,11 +1362,11 @@ class bitstamp extends Exchange {
             'amount' => $amount,
             'filled' => null,
             'remaining' => null,
-            'trades' => $trades,
+            'trades' => $transactions,
             'fee' => null,
             'info' => $order,
             'average' => null,
-        ));
+        ), $market);
     }
 
     public function parse_ledger_entry_type($type) {
@@ -1416,7 +1424,7 @@ class bitstamp extends Exchange {
             if ($market === null) {
                 $market = $this->get_market_from_trade($item);
             }
-            $direction = $parsedTrade['side'] === 'buy' ? 'in' : 'out';
+            $direction = ($parsedTrade['side'] === 'buy') ? 'in' : 'out';
             return array(
                 'id' => $parsedTrade['id'],
                 'info' => $item,
@@ -1439,12 +1447,12 @@ class bitstamp extends Exchange {
             $direction = null;
             if (is_array($item) && array_key_exists('amount', $item)) {
                 $amount = $this->safe_number($item, 'amount');
-                $direction = $amount > 0 ? 'in' : 'out';
+                $direction = ($amount > 0) ? 'in' : 'out';
             } else if ((is_array($parsedTransaction) && array_key_exists('currency', $parsedTransaction)) && $parsedTransaction['currency'] !== null) {
                 $code = $parsedTransaction['currency'];
                 $currencyId = $this->safe_string($this->currencies_by_id, $code, $code);
                 $amount = $this->safe_number($item, $currencyId);
-                $direction = $amount > 0 ? 'in' : 'out';
+                $direction = ($amount > 0) ? 'in' : 'out';
             }
             return array(
                 'id' => $parsedTransaction['id'],

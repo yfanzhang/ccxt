@@ -36,7 +36,6 @@ module.exports = class bitrue extends Exchange {
                 'fetchFundingRateHistory': false,
                 'fetchFundingRates': false,
                 'fetchIndexOHLCV': false,
-                'fetchIsolatedPositions': false,
                 'fetchMarkets': true,
                 'fetchMarkOHLCV': false,
                 'fetchMyTrades': true,
@@ -47,7 +46,7 @@ module.exports = class bitrue extends Exchange {
                 'fetchOrders': false,
                 'fetchPositions': false,
                 'fetchPremiumIndexOHLCV': false,
-                'fetchStatus': false,
+                'fetchStatus': true,
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTime': true,
@@ -328,6 +327,18 @@ module.exports = class bitrue extends Exchange {
         return this.milliseconds () - this.options['timeDifference'];
     }
 
+    async fetchStatus (params = {}) {
+        const response = await this.v1PublicGetPing (params);
+        const keys = Object.keys (response);
+        const keysLength = keys.length;
+        const formattedStatus = keysLength ? 'maintenance' : 'ok';
+        this.status = this.extend (this.status, {
+            'status': formattedStatus,
+            'updated': this.milliseconds (),
+        });
+        return this.status;
+    }
+
     async fetchTime (params = {}) {
         const response = await this.v1PublicGetTime (params);
         //
@@ -336,13 +347,6 @@ module.exports = class bitrue extends Exchange {
         //     }
         //
         return this.safeInteger (response, 'serverTime');
-    }
-
-    async loadTimeDifference (params = {}) {
-        const serverTime = await this.fetchTime (params);
-        const after = this.milliseconds ();
-        this.options['timeDifference'] = after - serverTime;
-        return this.options['timeDifference'];
     }
 
     safeNetwork (networkId) {
@@ -498,6 +502,8 @@ module.exports = class bitrue extends Exchange {
                 'precision': precision,
                 'info': currency,
                 'active': active,
+                'deposit': enableDeposit,
+                'withdraw': enableWithdraw,
                 'networks': networks,
                 'fee': this.safeNumber (currency, 'withdrawFee'),
                 // 'fees': fees,
@@ -637,6 +643,26 @@ module.exports = class bitrue extends Exchange {
         return result;
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+        };
+        const timestamp = this.safeInteger (response, 'updateTime');
+        const balances = this.safeValue2 (response, 'balances', []);
+        for (let i = 0; i < balances.length; i++) {
+            const balance = balances[i];
+            const currencyId = this.safeString (balance, 'asset');
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['free'] = this.safeString (balance, 'free');
+            account['used'] = this.safeString (balance, 'locked');
+            result[code] = account;
+        }
+        result['timestamp'] = timestamp;
+        result['datetime'] = this.iso8601 (timestamp);
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const response = await this.v1PrivateGetAccount (params);
@@ -657,23 +683,7 @@ module.exports = class bitrue extends Exchange {
         //         "canDeposit":false
         //     }
         //
-        const result = {
-            'info': response,
-        };
-        const timestamp = this.safeInteger (response, 'updateTime');
-        const balances = this.safeValue2 (response, 'balances', []);
-        for (let i = 0; i < balances.length; i++) {
-            const balance = balances[i];
-            const currencyId = this.safeString (balance, 'asset');
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['free'] = this.safeString (balance, 'free');
-            account['used'] = this.safeString (balance, 'locked');
-            result[code] = account;
-        }
-        result['timestamp'] = timestamp;
-        result['datetime'] = this.iso8601 (timestamp);
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -1080,7 +1090,7 @@ module.exports = class bitrue extends Exchange {
         }
         const stopPriceString = this.safeString (order, 'stopPrice');
         const stopPrice = this.parseNumber (this.omitZero (stopPriceString));
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,

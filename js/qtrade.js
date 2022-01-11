@@ -667,24 +667,7 @@ module.exports = class qtrade extends Exchange {
         }, market);
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetBalancesAll (params);
-        //
-        //     {
-        //         "data":{
-        //             "balances": [
-        //                 { "balance": "100000000", "currency": "BCH" },
-        //                 { "balance": "99992435.78253015", "currency": "LTC" },
-        //                 { "balance": "99927153.76074182", "currency": "BTC" },
-        //             ],
-        //             "order_balances":[],
-        //             "limit_used":0,
-        //             "limit_remaining":4000,
-        //             "limit":4000
-        //         }
-        //     }
-        //
+    parseBalance (response) {
         const data = this.safeValue (response, 'data', {});
         let balances = this.safeValue (data, 'balances', []);
         const result = {
@@ -710,7 +693,28 @@ module.exports = class qtrade extends Exchange {
             account['used'] = this.safeString (balance, 'balance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetBalancesAll (params);
+        //
+        //     {
+        //         "data":{
+        //             "balances": [
+        //                 { "balance": "100000000", "currency": "BCH" },
+        //                 { "balance": "99992435.78253015", "currency": "LTC" },
+        //                 { "balance": "99927153.76074182", "currency": "BTC" },
+        //             ],
+        //             "order_balances":[],
+        //             "limit_used":0,
+        //             "limit_remaining":4000,
+        //             "limit":4000
+        //         }
+        //     }
+        //
+        return this.parseBalance (response);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -839,9 +843,9 @@ module.exports = class qtrade extends Exchange {
             side = this.safeString (parts, 0);
             orderType = this.safeString (parts, 1);
         }
-        const price = this.safeNumber (order, 'price');
-        const amount = this.safeNumber (order, 'market_amount');
-        const remaining = this.safeNumber (order, 'market_amount_remaining');
+        const price = this.safeString (order, 'price');
+        const amount = this.safeString (order, 'market_amount');
+        const remaining = this.safeString (order, 'market_amount_remaining');
         const open = this.safeValue (order, 'open', false);
         const closeReason = this.safeString (order, 'close_reason');
         let status = undefined;
@@ -856,11 +860,6 @@ module.exports = class qtrade extends Exchange {
         market = this.safeMarket (marketId, market, '_');
         const symbol = market['symbol'];
         const rawTrades = this.safeValue (order, 'trades', []);
-        const parsedTrades = this.parseTrades (rawTrades, market, undefined, undefined, {
-            'order': id,
-            'side': side,
-            'type': orderType,
-        });
         return this.safeOrder ({
             'info': order,
             'id': id,
@@ -883,8 +882,8 @@ module.exports = class qtrade extends Exchange {
             'fee': undefined,
             'fees': undefined,
             'cost': undefined,
-            'trades': parsedTrades,
-        });
+            'trades': rawTrades,
+        }, market);
     }
 
     async cancelOrder (id, symbol = undefined, params = {}) {
@@ -1371,6 +1370,7 @@ module.exports = class qtrade extends Exchange {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'addressFrom': addressFrom,
             'addressTo': addressTo,
             'address': address,

@@ -636,6 +636,25 @@ module.exports = class bigone extends Exchange {
         return this.parseOHLCVs (data, market, timeframe, since, limit);
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
+        const balances = this.safeValue (response, 'data', []);
+        for (let i = 0; i < balances.length; i++) {
+            const balance = balances[i];
+            const symbol = this.safeString (balance, 'asset_symbol');
+            const code = this.safeCurrencyCode (symbol);
+            const account = this.account ();
+            account['total'] = this.safeString (balance, 'balance');
+            account['used'] = this.safeString (balance, 'locked_balance');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const type = this.safeString (params, 'type', '');
@@ -652,22 +671,7 @@ module.exports = class bigone extends Exchange {
         //         ],
         //     }
         //
-        const result = {
-            'info': response,
-            'timestamp': undefined,
-            'datetime': undefined,
-        };
-        const balances = this.safeValue (response, 'data', []);
-        for (let i = 0; i < balances.length; i++) {
-            const balance = balances[i];
-            const symbol = this.safeString (balance, 'asset_symbol');
-            const code = this.safeCurrencyCode (symbol);
-            const account = this.account ();
-            account['total'] = this.safeString (balance, 'balance');
-            account['used'] = this.safeString (balance, 'locked_balance');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     parseOrder (order, market = undefined) {
@@ -701,7 +705,7 @@ module.exports = class bigone extends Exchange {
             side = 'sell';
         }
         const lastTradeTimestamp = this.parse8601 (this.safeString (order, 'updated_at'));
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,
@@ -1103,6 +1107,7 @@ module.exports = class bigone extends Exchange {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'addressFrom': undefined,
             'address': undefined,
             'addressTo': address,

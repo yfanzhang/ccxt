@@ -13,7 +13,7 @@ module.exports = class exmo extends Exchange {
         return this.deepExtend (super.describe (), {
             'id': 'exmo',
             'name': 'EXMO',
-            'countries': [ 'ES', 'RU' ], // Spain, Russia
+            'countries': [ 'LT' ], // Lithuania
             'rateLimit': 350, // once every 350 ms ≈ 180 requests per minute ≈ 3 requests per second
             'version': 'v1.1',
             'has': {
@@ -35,7 +35,6 @@ module.exports = class exmo extends Exchange {
                 'fetchTicker': true,
                 'fetchTickers': true,
                 'fetchTrades': true,
-                'fetchTradingFee': true,
                 'fetchTradingFees': true,
                 'fetchTransactions': true,
                 'fetchWithdrawals': true,
@@ -519,21 +518,7 @@ module.exports = class exmo extends Exchange {
         ];
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privatePostUserInfo (params);
-        //
-        //     {
-        //         "uid":131685,
-        //         "server_date":1628999600,
-        //         "balances":{
-        //             "EXM":"0",
-        //             "USD":"0",
-        //             "EUR":"0",
-        //             "GBP":"0",
-        //         },
-        //     }
-        //
+    parseBalance (response) {
         const result = { 'info': response };
         const free = this.safeValue (response, 'balances', {});
         const used = this.safeValue (response, 'reserved', {});
@@ -550,7 +535,25 @@ module.exports = class exmo extends Exchange {
             }
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privatePostUserInfo (params);
+        //
+        //     {
+        //         "uid":131685,
+        //         "server_date":1628999600,
+        //         "balances":{
+        //             "EXM":"0",
+        //             "USD":"0",
+        //             "EUR":"0",
+        //             "GBP":"0",
+        //         },
+        //     }
+        //
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -689,9 +692,9 @@ module.exports = class exmo extends Exchange {
         let symbol = undefined;
         const id = this.safeString (trade, 'trade_id');
         const orderId = this.safeString (trade, 'order_id');
-        const price = this.safeNumber (trade, 'price');
-        const amount = this.safeNumber (trade, 'quantity');
-        const cost = this.safeNumber (trade, 'amount');
+        const priceString = this.safeString (trade, 'price');
+        const amountString = this.safeString (trade, 'quantity');
+        const costString = this.safeString (trade, 'amount');
         const side = this.safeString (trade, 'type');
         const type = undefined;
         const marketId = this.safeString (trade, 'pair');
@@ -710,21 +713,21 @@ module.exports = class exmo extends Exchange {
         }
         const takerOrMaker = this.safeString (trade, 'exec_type');
         let fee = undefined;
-        const feeCost = this.safeNumber (trade, 'commission_amount');
-        if (feeCost !== undefined) {
+        const feeCostString = this.safeString (trade, 'commission_amount');
+        if (feeCostString !== undefined) {
             const feeCurrencyId = this.safeString (trade, 'commission_currency');
             const feeCurrencyCode = this.safeCurrencyCode (feeCurrencyId);
-            let feeRate = this.safeNumber (trade, 'commission_percent');
-            if (feeRate !== undefined) {
-                feeRate /= 1000;
+            let feeRateString = this.safeString (trade, 'commission_percent');
+            if (feeRateString !== undefined) {
+                feeRateString = Precise.stringDiv (feeRateString, '1000', 18);
             }
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
-                'rate': feeRate,
+                'rate': feeRateString,
             };
         }
-        return {
+        return this.safeTrade ({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -734,11 +737,11 @@ module.exports = class exmo extends Exchange {
             'type': type,
             'side': side,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': costString,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -1313,6 +1316,7 @@ module.exports = class exmo extends Exchange {
                 };
             }
         }
+        const network = this.safeString (transaction, 'provider');
         return {
             'info': transaction,
             'id': id,
@@ -1320,6 +1324,7 @@ module.exports = class exmo extends Exchange {
             'datetime': this.iso8601 (timestamp),
             'currency': code,
             'amount': amount,
+            'network': network,
             'address': address,
             'addressTo': address,
             'addressFrom': undefined,

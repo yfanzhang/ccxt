@@ -208,9 +208,7 @@ class therock extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privateGetBalances ($params);
+    public function parse_balance($response) {
         $balances = $this->safe_value($response, 'balances', array());
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($balances); $i++) {
@@ -222,7 +220,13 @@ class therock extends Exchange {
             $account['total'] = $this->safe_string($balance, 'balance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetBalances ($params);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -740,12 +744,14 @@ class therock extends Exchange {
         $amount = $this->safe_number($transaction, 'price');
         $timestamp = $this->parse8601($this->safe_string($transaction, 'date'));
         $status = 'ok';
+        $network = $this->safe_string($detail, 'method');
         // todo parse tags
         return array(
             'info' => $transaction,
             'id' => $id,
             'currency' => $code,
             'amount' => $amount,
+            'network' => $network,
             'addressFrom' => null,
             'addressTo' => $address,
             'address' => $address,

@@ -232,6 +232,7 @@ class hitbtc(Exchange):
                 'STX': 'STOX',
                 'TV': 'Tokenville',
                 'USD': 'USDT',
+                'XMT': 'MTL',
                 'XPNT': 'PNT',
             },
             'exceptions': {
@@ -412,6 +413,8 @@ class hitbtc(Exchange):
                 'info': currency,
                 'name': name,
                 'active': active,
+                'deposit': payin,
+                'withdraw': payout,
                 'fee': self.safe_number(currency, 'payoutFee'),  # todo: redesign
                 'precision': precision,
                 'limits': {
@@ -427,13 +430,8 @@ class hitbtc(Exchange):
             }
         return result
 
-    async def fetch_trading_fee(self, symbol, params={}):
-        await self.load_markets()
-        market = self.market(symbol)
-        request = self.extend({
-            'symbol': market['id'],
-        }, self.omit(params, 'symbol'))
-        response = await self.privateGetTradingFeeSymbol(request)
+    def parse_trading_fee(self, fee, market=None):
+        #
         #
         #     {
         #         takeLiquidityRate: '0.001',
@@ -441,10 +439,42 @@ class hitbtc(Exchange):
         #     }
         #
         return {
-            'info': response,
-            'maker': self.safe_number(response, 'provideLiquidityRate'),
-            'taker': self.safe_number(response, 'takeLiquidityRate'),
+            'info': fee,
+            'symbol': self.safe_symbol(None, market),
+            'maker': self.safe_number(fee, 'provideLiquidityRate'),
+            'taker': self.safe_number(fee, 'takeLiquidityRate'),
         }
+
+    async def fetch_trading_fee(self, symbol, params={}):
+        await self.load_markets()
+        market = self.market(symbol)
+        request = {
+            'symbol': market['id'],
+        }
+        response = await self.privateGetTradingFeeSymbol(request)
+        #
+        #     {
+        #         takeLiquidityRate: '0.001',
+        #         provideLiquidityRate: '-0.0001'
+        #     }
+        #
+        return self.parse_trading_fee(response, market)
+
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+            'timestamp': None,
+            'datetime': None,
+        }
+        for i in range(0, len(response)):
+            balance = response[i]
+            currencyId = self.safe_string(balance, 'currency')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'available')
+            account['used'] = self.safe_string(balance, 'reserved')
+            result[code] = account
+        return self.safe_balance(result)
 
     async def fetch_balance(self, params={}):
         await self.load_markets()
@@ -463,20 +493,7 @@ class hitbtc(Exchange):
         #         {"currency":"DGTX","available":"0","reserved":"0"},
         #     ]
         #
-        result = {
-            'info': response,
-            'timestamp': None,
-            'datetime': None,
-        }
-        for i in range(0, len(response)):
-            balance = response[i]
-            currencyId = self.safe_string(balance, 'currency')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'available')
-            account['used'] = self.safe_string(balance, 'reserved')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def parse_ohlcv(self, ohlcv, market=None):
         #
@@ -744,8 +761,13 @@ class hitbtc(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': None,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': amount,
             'currency': code,
@@ -904,22 +926,20 @@ class hitbtc(Exchange):
         marketId = self.safe_string(order, 'symbol')
         market = self.safe_market(marketId, market)
         symbol = market['symbol']
-        amount = self.safe_number(order, 'quantity')
-        filled = self.safe_number(order, 'cumQuantity')
+        amount = self.safe_string(order, 'quantity')
+        filled = self.safe_string(order, 'cumQuantity')
         status = self.parse_order_status(self.safe_string(order, 'status'))
         # we use clientOrderId as the order id with self exchange intentionally
         # because most of their endpoints will require clientOrderId
         # explained here: https://github.com/ccxt/ccxt/issues/5674
         id = self.safe_string(order, 'clientOrderId')
         clientOrderId = id
-        price = self.safe_number(order, 'price')
+        price = self.safe_string(order, 'price')
         type = self.safe_string(order, 'type')
         side = self.safe_string(order, 'side')
         trades = self.safe_value(order, 'tradesReport')
         fee = None
-        average = self.safe_number(order, 'avgPrice')
-        if trades is not None:
-            trades = self.parse_trades(trades, market)
+        average = self.safe_string(order, 'avgPrice')
         timeInForce = self.safe_string(order, 'timeInForce')
         return self.safe_order({
             'id': id,
@@ -942,7 +962,7 @@ class hitbtc(Exchange):
             'fee': fee,
             'trades': trades,
             'info': order,
-        })
+        }, market)
 
     async def fetch_order(self, id, symbol=None, params={}):
         await self.load_markets()

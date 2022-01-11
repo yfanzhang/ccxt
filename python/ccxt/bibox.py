@@ -55,7 +55,6 @@ class bibox(Exchange):
                 'fetchTickers': True,
                 'fetchTrades': True,
                 'fetchWithdrawals': True,
-                'publicAPI': None,
                 'withdraw': True,
             },
             'timeframes': {
@@ -158,9 +157,6 @@ class bibox(Exchange):
                 'PAI': 'PCHAIN',
                 'REVO': 'Revo Network',
                 'TERN': 'Ternio-ERC20',
-            },
-            'options': {
-                'fetchCurrencies': 'fetchCurrenciesPrivate',  # or 'fetchCurrenciesPrivate' with apiKey and secret
             },
         })
 
@@ -445,8 +441,10 @@ class bibox(Exchange):
         return self.parse_ohlcvs(result, market, timeframe, since, limit)
 
     def fetch_currencies(self, params={}):
-        method = self.safe_string(self.options, 'fetchCurrencies', 'fetchCurrenciesPublic')
-        return getattr(self, method)(params)
+        if self.check_required_credentials(False):
+            return self.fetch_currencies_private(params)
+        else:
+            return self.fetch_currencies_public(params)
 
     def fetch_currencies_public(self, params={}):
         request = {
@@ -490,6 +488,8 @@ class bibox(Exchange):
                 'info': currency,
                 'name': name,
                 'active': active,
+                'deposit': deposit,
+                'withdraw': withdraw,
                 'fee': None,
                 'precision': precision,
                 'limits': {
@@ -506,7 +506,7 @@ class bibox(Exchange):
         return result
 
     def fetch_currencies_private(self, params={}):
-        if not self.apiKey or not self.secret:
+        if not self.check_required_credentials(False):
             raise AuthenticationError(self.id + " fetchCurrencies is an authenticated endpoint, therefore it requires 'apiKey' and 'secret' credentials. If you don't need currency details, set exchange.has['fetchCurrencies'] = False before calling its methods.")
         request = {
             'cmd': 'transfer/coinList',
@@ -598,6 +598,22 @@ class bibox(Exchange):
             }
         return result
 
+    def parse_balance(self, response):
+        outerResult = self.safe_value(response, 'result')
+        firstResult = self.safe_value(outerResult, 0, {})
+        innerResult = self.safe_value(firstResult, 'result')
+        result = {'info': response}
+        assetsList = self.safe_value(innerResult, 'assets_list', [])
+        for i in range(0, len(assetsList)):
+            balance = assetsList[i]
+            currencyId = self.safe_string(balance, 'coin_symbol')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'balance')
+            account['used'] = self.safe_string(balance, 'freeze')
+            result[code] = account
+        return self.safe_balance(result)
+
     def fetch_balance(self, params={}):
         self.load_markets()
         type = self.safe_string(params, 'type', 'assets')
@@ -628,20 +644,7 @@ class bibox(Exchange):
         #         ]
         #     }
         #
-        outerResult = self.safe_value(response, 'result')
-        firstResult = self.safe_value(outerResult, 0, {})
-        innerResult = self.safe_value(firstResult, 'result')
-        result = {'info': response}
-        assetsList = self.safe_value(innerResult, 'assets_list', [])
-        for i in range(0, len(assetsList)):
-            balance = assetsList[i]
-            currencyId = self.safe_string(balance, 'coin_symbol')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'balance')
-            account['used'] = self.safe_string(balance, 'freeze')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def fetch_deposits(self, code=None, since=None, limit=None, params={}):
         self.load_markets()
@@ -801,8 +804,13 @@ class bibox(Exchange):
             'txid': None,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': amount,
             'currency': code,
@@ -957,7 +965,7 @@ class bibox(Exchange):
                 'cost': feeCost,
                 'currency': None,
             }
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,

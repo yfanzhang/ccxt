@@ -256,22 +256,7 @@ class latoken1 extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privateGetAccountBalances ($params);
-        //
-        //     array(
-        //         {
-        //             "currencyId" => 102,
-        //             "symbol" => "LA",
-        //             "name" => "Latoken",
-        //             "amount" => 1054.66,
-        //             "available" => 900.66,
-        //             "frozen" => 154,
-        //             "pending" => 0
-        //         }
-        //     )
-        //
+    public function parse_balance($response) {
         $result = array(
             'info' => $response,
             'timestamp' => null,
@@ -289,7 +274,26 @@ class latoken1 extends Exchange {
             $account['total'] = $this->safe_string($balance, 'amount');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privateGetAccountBalances ($params);
+        //
+        //     array(
+        //         {
+        //             "currencyId" => 102,
+        //             "symbol" => "LA",
+        //             "name" => "Latoken",
+        //             "amount" => 1054.66,
+        //             "available" => 900.66,
+        //             "frozen" => 154,
+        //             "pending" => 0
+        //         }
+        //     )
+        //
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -602,7 +606,7 @@ class latoken1 extends Exchange {
             $lastTradeTimestamp = $timeFilled;
         }
         $clientOrderId = $this->safe_string($order, 'cliOrdId');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,

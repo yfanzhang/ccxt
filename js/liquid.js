@@ -460,6 +460,35 @@ module.exports = class liquid extends Exchange {
         return result;
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+            'timestamp': undefined,
+            'datetime': undefined,
+        };
+        const crypto = this.safeValue (response, 'crypto_accounts', []);
+        const fiat = this.safeValue (response, 'fiat_accounts', []);
+        for (let i = 0; i < crypto.length; i++) {
+            const balance = crypto[i];
+            const currencyId = this.safeString (balance, 'currency');
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['total'] = this.safeString (balance, 'balance');
+            account['used'] = this.safeString (balance, 'reserved_balance');
+            result[code] = account;
+        }
+        for (let i = 0; i < fiat.length; i++) {
+            const balance = fiat[i];
+            const currencyId = this.safeString (balance, 'currency');
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['total'] = this.safeString (balance, 'balance');
+            account['used'] = this.safeString (balance, 'reserved_balance');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const response = await this.privateGetAccounts (params);
@@ -497,32 +526,7 @@ module.exports = class liquid extends Exchange {
         //         ]
         //     }
         //
-        const result = {
-            'info': response,
-            'timestamp': undefined,
-            'datetime': undefined,
-        };
-        const crypto = this.safeValue (response, 'crypto_accounts', []);
-        const fiat = this.safeValue (response, 'fiat_accounts', []);
-        for (let i = 0; i < crypto.length; i++) {
-            const balance = crypto[i];
-            const currencyId = this.safeString (balance, 'currency');
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['total'] = this.safeString (balance, 'balance');
-            account['used'] = this.safeString (balance, 'reserved_balance');
-            result[code] = account;
-        }
-        for (let i = 0; i < fiat.length; i++) {
-            const balance = fiat[i];
-            const currencyId = this.safeString (balance, 'currency');
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['total'] = this.safeString (balance, 'balance');
-            account['used'] = this.safeString (balance, 'reserved_balance');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchOrderBook (symbol, limit = undefined, params = {}) {
@@ -987,31 +991,34 @@ module.exports = class liquid extends Exchange {
         const currency = this.currency (code);
         const request = {
             // 'auth_code': '', // optional 2fa code
-            'currency': currency['id'],
-            'address': address,
-            'amount': amount,
-            // 'payment_id': tag, // for XRP only
-            // 'memo_type': 'text', // 'text', 'id' or 'hash', for XLM only
-            // 'memo_value': tag, // for XLM only
+            'crypto_withdrawal': {
+                'currency': currency['id'],
+                'address': address,
+                'amount': amount,
+                // 'payment_id': tag, // for XRP only
+                // 'memo_type': 'text', // 'text', 'id' or 'hash', for XLM only
+                // 'memo_value': tag, // for XLM only
+            },
         };
         if (tag !== undefined) {
             if (code === 'XRP') {
-                request['payment_id'] = tag;
+                request['crypto_withdrawal']['payment_id'] = tag;
             } else if (code === 'XLM') {
-                request['memo_type'] = 'text'; // overrideable via params
-                request['memo_value'] = tag;
+                request['crypto_withdrawal']['memo_type'] = 'text'; // overrideable via params
+                request['crypto_withdrawal']['memo_value'] = tag;
             } else {
                 throw new NotSupported (this.id + ' withdraw() only supports a tag along the address for XRP or XLM');
             }
         }
         const networks = this.safeValue (this.options, 'networks', {});
-        let network = this.safeStringUpper (params, 'network'); // this line allows the user to specify either ERC20 or ETH
+        const paramsCwArray = this.safeValue (params, 'crypto_withdrawal', {});
+        let network = this.safeStringUpper (paramsCwArray, 'network'); // this line allows the user to specify either ERC20 or ETH
         network = this.safeString (networks, network, network); // handle ERC20>ETH alias
         if (network !== undefined) {
-            request['network'] = network;
-            params = this.omit (params, 'network');
+            request['crypto_withdrawal']['network'] = network;
+            params['crypto_withdrawal'] = this.omit (params['crypto_withdrawal'], 'network');
         }
-        const response = await this.privatePostCryptoWithdrawals (this.extend (request, params));
+        const response = await this.privatePostCryptoWithdrawals (this.deepExtend (request, params));
         //
         //     {
         //         "id": 1353,
@@ -1138,14 +1145,20 @@ module.exports = class liquid extends Exchange {
         const amountString = this.safeString (transaction, 'amount');
         const feeCostString = this.safeString (transaction, 'withdrawal_fee');
         const amount = this.parseNumber (Precise.stringSub (amountString, feeCostString));
+        const network = this.safeString (transaction, 'chain_name');
         return {
             'info': transaction,
             'id': id,
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': network,
             'address': address,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': tag,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'type': type,
             'amount': amount,
             'currency': code,

@@ -242,6 +242,7 @@ class stex extends Exchange {
                     'Selected Pair is disabled' => '\\ccxt\\BadSymbol', // array("success":false,"message":"Selected Pair is disabled")
                     'Invalid scope(s) provided.' => '\\ccxt\\PermissionDenied', // array( "message" => "Invalid scope(s) provided." )
                     'The maximum amount of open orders with the same price cannot exceed 10' => '\\ccxt\\InvalidOrder', // array( "success":false,"message":"The maximum amount of open orders with the same price cannot exceed 10" )
+                    'Your account not verified!' => '\\ccxt\\AccountSuspended', // array("success":false,"message":"Your account not verified!","unified_message":array("message_id":"verification_required_to_continue","substitutions":null),"notice":"Please be informed that parameter `message` is deprecated and will be removed. Use unified_message instead.")
                 ),
                 'broad' => array(
                     'Not enough' => '\\ccxt\\InsufficientFunds', // array("success":false,"message":"Not enough  ETH")
@@ -795,6 +796,24 @@ class stex extends Exchange {
         return $this->parse_trades($trades, $market, $since, $limit);
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        $balances = $this->safe_value($response, 'data', array());
+        for ($i = 0; $i < count($balances); $i++) {
+            $balance = $balances[$i];
+            $code = $this->safe_currency_code($this->safe_string($balance, 'currency_id'));
+            $account = $this->account();
+            $account['free'] = $this->safe_string($balance, 'balance');
+            $account['used'] = $this->safe_string($balance, 'frozen_balance');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $this->load_markets();
         // $this->load_accounts();
@@ -842,21 +861,7 @@ class stex extends Exchange {
         //         )
         //     }
         //
-        $result = array(
-            'info' => $response,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        $balances = $this->safe_value($response, 'data', array());
-        for ($i = 0; $i < count($balances); $i++) {
-            $balance = $balances[$i];
-            $code = $this->safe_currency_code($this->safe_string($balance, 'currency_id'));
-            $account = $this->account();
-            $account['free'] = $this->safe_string($balance, 'balance');
-            $account['used'] = $this->safe_string($balance, 'frozen_balance');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function parse_order_status($status) {
@@ -1578,12 +1583,14 @@ class stex extends Exchange {
                 'currency' => $feeCurrencyCode,
             );
         }
+        $network = $this->safe_string($withdrawalAddress, 'protocol_name');
         return array(
             'info' => $transaction,
             'id' => $id,
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => $network,
             'addressFrom' => null,
             'address' => $address,
             'addressTo' => $address,

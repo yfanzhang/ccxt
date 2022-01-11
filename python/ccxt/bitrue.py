@@ -53,7 +53,6 @@ class bitrue(Exchange):
                 'fetchFundingRateHistory': False,
                 'fetchFundingRates': False,
                 'fetchIndexOHLCV': False,
-                'fetchIsolatedPositions': False,
                 'fetchMarkets': True,
                 'fetchMarkOHLCV': False,
                 'fetchMyTrades': True,
@@ -64,7 +63,7 @@ class bitrue(Exchange):
                 'fetchOrders': False,
                 'fetchPositions': False,
                 'fetchPremiumIndexOHLCV': False,
-                'fetchStatus': False,
+                'fetchStatus': True,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTime': True,
@@ -340,6 +339,17 @@ class bitrue(Exchange):
     def nonce(self):
         return self.milliseconds() - self.options['timeDifference']
 
+    def fetch_status(self, params={}):
+        response = self.v1PublicGetPing(params)
+        keys = list(response.keys())
+        keysLength = len(keys)
+        formattedStatus = 'maintenance' if keysLength else 'ok'
+        self.status = self.extend(self.status, {
+            'status': formattedStatus,
+            'updated': self.milliseconds(),
+        })
+        return self.status
+
     def fetch_time(self, params={}):
         response = self.v1PublicGetTime(params)
         #
@@ -348,12 +358,6 @@ class bitrue(Exchange):
         #     }
         #
         return self.safe_integer(response, 'serverTime')
-
-    def load_time_difference(self, params={}):
-        serverTime = self.fetch_time(params)
-        after = self.milliseconds()
-        self.options['timeDifference'] = after - serverTime
-        return self.options['timeDifference']
 
     def safe_network(self, networkId):
         uppercaseNetworkId = networkId.upper()
@@ -506,6 +510,8 @@ class bitrue(Exchange):
                 'precision': precision,
                 'info': currency,
                 'active': active,
+                'deposit': enableDeposit,
+                'withdraw': enableWithdraw,
                 'networks': networks,
                 'fee': self.safe_number(currency, 'withdrawFee'),
                 # 'fees': fees,
@@ -638,6 +644,24 @@ class bitrue(Exchange):
             result.append(entry)
         return result
 
+    def parse_balance(self, response):
+        result = {
+            'info': response,
+        }
+        timestamp = self.safe_integer(response, 'updateTime')
+        balances = self.safe_value_2(response, 'balances', [])
+        for i in range(0, len(balances)):
+            balance = balances[i]
+            currencyId = self.safe_string(balance, 'asset')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'free')
+            account['used'] = self.safe_string(balance, 'locked')
+            result[code] = account
+        result['timestamp'] = timestamp
+        result['datetime'] = self.iso8601(timestamp)
+        return self.safe_balance(result)
+
     def fetch_balance(self, params={}):
         self.load_markets()
         response = self.v1PrivateGetAccount(params)
@@ -658,22 +682,7 @@ class bitrue(Exchange):
         #         "canDeposit":false
         #     }
         #
-        result = {
-            'info': response,
-        }
-        timestamp = self.safe_integer(response, 'updateTime')
-        balances = self.safe_value_2(response, 'balances', [])
-        for i in range(0, len(balances)):
-            balance = balances[i]
-            currencyId = self.safe_string(balance, 'asset')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'free')
-            account['used'] = self.safe_string(balance, 'locked')
-            result[code] = account
-        result['timestamp'] = timestamp
-        result['datetime'] = self.iso8601(timestamp)
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -1056,7 +1065,7 @@ class bitrue(Exchange):
             type = 'limit'
         stopPriceString = self.safe_string(order, 'stopPrice')
         stopPrice = self.parse_number(self.omit_zero(stopPriceString))
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,

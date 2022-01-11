@@ -20,7 +20,6 @@ from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import RequestTimeout
 from ccxt.base.decimal_to_precision import TRUNCATE
-from ccxt.base.precise import Precise
 
 
 class cdax(Exchange):
@@ -46,7 +45,7 @@ class cdax(Exchange):
                 'createOrder': True,
                 'fetchBalance': True,
                 'fetchClosedOrders': True,
-                'fetchCurrencies': False,
+                'fetchCurrencies': True,
                 'fetchDepositAddress': False,
                 'fetchDepositAddressesByNetwork': False,
                 'fetchDeposits': True,
@@ -560,34 +559,56 @@ class cdax(Exchange):
         #
         # fetchTrades(public)
         #
-        #     {
-        #         "amount": 0.010411000000000000,
-        #         "trade-id": 102090736910,
-        #         "ts": 1583497692182,
-        #         "id": 10500517034273194594947,
-        #         "price": 9096.050000000000000000,
-        #         "direction": "sell"
-        #     }
+        #      {
+        #          "id": "112522757755423628681413936",
+        #          "ts": "1638457111917",
+        #          "trade-id": "100454385963",
+        #          "amount": "13.7962",
+        #          "price": "1.697867",
+        #          "direction": "buy"
+        #      }
         #
         # fetchMyTrades(private)
         #
-        #     {
-        #          'symbol': 'swftcbtc',
-        #          'fee-currency': 'swftc',
-        #          'filled-fees': '0',
-        #          'source': 'spot-api',
-        #          'id': 83789509854000,
-        #          'type': 'buy-limit',
-        #          'order-id': 83711103204909,
-        #          'filled-points': '0.005826843283532154',
-        #          'fee-deduct-currency': 'ht',
-        #          'filled-amount': '45941.53',
-        #          'price': '0.0000001401',
-        #          'created-at': 1597933260729,
-        #          'match-id': 100087455560,
-        #          'role': 'maker',
-        #          'trade-id': 100050305348
-        #     },
+        #      {
+        #          "symbol": "adausdt",
+        #          "fee-currency": "usdt",
+        #          "source": "spot-api",
+        #          "order-id": "423628498050504",
+        #          "created-at": "1638455779233",
+        #          "role": "taker",
+        #          "price": "1.672487",
+        #          "match-id": "112521868633",
+        #          "trade-id": "100454375614",
+        #          "filled-amount": "6.8",
+        #          "filled-fees": "0.0227458232",
+        #          "filled-points": "0.0",
+        #          "fee-deduct-currency": "",
+        #          "fee-deduct-state": "done",
+        #          "id": "422419583501532",
+        #          "type": "sell-market"
+        #      },
+        #
+        # fetchOrderTrades(private)
+        #
+        #      {
+        #          "symbol": "adausdt",
+        #          "fee-currency": "usdt",
+        #          "source": "spot-api",
+        #          "match-id": "112521868633",
+        #          "trade-id": "100454375614",
+        #          "role": "taker",
+        #          "order-id": "423628498050504",
+        #          "price": "1.672487",
+        #          "created-at": "1638455779233",
+        #          "filled-amount": "6.8",
+        #          "filled-fees": "0.0227458232",
+        #          "filled-points": "0.0",
+        #          "fee-deduct-currency": "",
+        #          "fee-deduct-state": "done",
+        #          "id": "422419583501532",
+        #          "type": "sell-market"
+        #      }
         #
         marketId = self.safe_string(trade, 'symbol')
         symbol = self.safe_symbol(marketId, market)
@@ -602,25 +623,22 @@ class cdax(Exchange):
         takerOrMaker = self.safe_string(trade, 'role')
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string_2(trade, 'filled-amount', 'amount')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         fee = None
-        feeCost = self.safe_number(trade, 'filled-fees')
+        feeCostString = self.safe_string(trade, 'filled-fees')
         feeCurrency = self.safe_currency_code(self.safe_string(trade, 'fee-currency'))
-        filledPoints = self.safe_number(trade, 'filled-points')
+        filledPoints = self.safe_string(trade, 'filled-points')
         if filledPoints is not None:
-            if (feeCost is None) or (feeCost == 0.0):
-                feeCost = filledPoints
+            if (feeCostString is None) or (feeCostString == '0.0'):
+                feeCostString = filledPoints
                 feeCurrency = self.safe_currency_code(self.safe_string(trade, 'fee-deduct-currency'))
-        if feeCost is not None:
+        if feeCostString is not None:
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrency,
             }
         tradeId = self.safe_string_2(trade, 'trade-id', 'tradeId')
         id = self.safe_string(trade, 'id', tradeId)
-        return {
+        return self.safe_trade({
             'id': id,
             'info': trade,
             'order': order,
@@ -630,11 +648,11 @@ class cdax(Exchange):
             'type': type,
             'side': side,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
         await self.load_markets()
@@ -755,120 +773,96 @@ class cdax(Exchange):
         return response['data']
 
     async def fetch_currencies(self, params={}):
-        response = await self.v2PublicGetReferenceCurrencies()
+        request = {
+            'language': self.options['language'],
+        }
+        response = await self.publicGetSettingsCurrencys(self.extend(request, params))
+        #
         #     {
-        #       "code": 200,
-        #       "data": [
-        #         {
-        #           "currency": "sxp",
-        #           "assetType": "1",
-        #           "chains": [
+        #         "status":"ok",
+        #         "data":[
         #             {
-        #               "chain": "sxp",
-        #               "displayName": "ERC20",
-        #               "baseChain": "ETH",
-        #               "baseChainProtocol": "ERC20",
-        #               "isDynamic": True,
-        #               "numOfConfirmations": "12",
-        #               "numOfFastConfirmations": "12",
-        #               "depositStatus": "allowed",
-        #               "minDepositAmt": "0.23",
-        #               "withdrawStatus": "allowed",
-        #               "minWithdrawAmt": "0.23",
-        #               "withdrawPrecision": "8",
-        #               "maxWithdrawAmt": "227000.000000000000000000",
-        #               "withdrawQuotaPerDay": "227000.000000000000000000",
-        #               "withdrawQuotaPerYear": null,
-        #               "withdrawQuotaTotal": null,
-        #               "withdrawFeeType": "fixed",
-        #               "transactFeeWithdraw": "11.1653",
-        #               "addrWithTag": False,
-        #               "addrDepositTag": False
+        #                 "currency-addr-with-tag":false,
+        #                 "fast-confirms":12,
+        #                 "safe-confirms":12,
+        #                 "currency-type":"eth",
+        #                 "quote-currency":true,
+        #                 "withdraw-enable-timestamp":1609430400000,
+        #                 "deposit-enable-timestamp":1609430400000,
+        #                 "currency-partition":"all",
+        #                 "support-sites":["OTC","INSTITUTION","MINEPOOL"],
+        #                 "withdraw-precision":6,
+        #                 "visible-assets-timestamp":1508839200000,
+        #                 "deposit-min-amount":"1",
+        #                 "withdraw-min-amount":"10",
+        #                 "show-precision":"8",
+        #                 "tags":"",
+        #                 "weight":23,
+        #                 "full-name":"Tether USDT",
+        #                 "otc-enable":1,
+        #                 "visible":true,
+        #                 "white-enabled":false,
+        #                 "country-disabled":false,
+        #                 "deposit-enabled":true,
+        #                 "withdraw-enabled":true,
+        #                 "name":"usdt",
+        #                 "state":"online",
+        #                 "display-name":"USDT",
+        #                 "suspend-withdraw-desc":null,
+        #                 "withdraw-desc":"Minimum withdrawal amount: 10 USDT(ERC20). not >_<not To ensure the safety of your funds, your withdrawal request will be manually reviewed if your security strategy or password is changed. Please wait for phone calls or emails from our staff.not >_<not Please make sure that your computer and browser are secure and your information is protected from being tampered or leaked.",
+        #                 "suspend-deposit-desc":null,
+        #                 "deposit-desc":"Please don’t deposit any other digital assets except USDT to the above address. Otherwise, you may lose your assets permanently. not >_<not Depositing to the above address requires confirmations of the entire network. It will arrive after 12 confirmations, and it will be available to withdraw after 12 confirmations. not >_<not Minimum deposit amount: 1 USDT. Any deposits less than the minimum will not be credited or refunded.not >_<not Your deposit address won’t change often. If there are any changes, we will notify you via announcement or email.not >_<not Please make sure that your computer and browser are secure and your information is protected from being tampered or leaked.",
+        #                 "suspend-visible-desc":null
         #             }
-        #           ],
-        #           "instStatus": "normal"
-        #         }
-        #       ]
+        #         ]
         #     }
         #
-        data = self.safe_value(response, 'data', [])
+        currencies = self.safe_value(response, 'data')
         result = {}
-        for i in range(0, len(data)):
-            entry = data[i]
-            currencyId = self.safe_string(entry, 'currency')
-            code = self.safe_currency_code(currencyId)
-            chains = self.safe_value(entry, 'chains', [])
-            networks = {}
-            instStatus = self.safe_string(entry, 'instStatus')
-            currencyActive = instStatus == 'normal'
-            fee = None
-            precision = None
-            minWithdraw = None
-            maxWithdraw = None
-            for j in range(0, len(chains)):
-                chain = chains[j]
-                networkId = self.safe_string(chain, 'chain')
-                baseChainProtocol = self.safe_string(chain, 'baseChainProtocol')
-                huobiToken = 'h' + currencyId
-                if baseChainProtocol is None:
-                    if huobiToken == networkId:
-                        baseChainProtocol = 'ERC20'
-                    else:
-                        baseChainProtocol = self.safe_string(chain, 'displayName')
-                network = self.safe_network(baseChainProtocol)
-                minWithdraw = self.safe_number(chain, 'minWithdrawAmt')
-                maxWithdraw = self.safe_number(chain, 'maxWithdrawAmt')
-                withdraw = self.safe_string(chain, 'withdrawStatus')
-                deposit = self.safe_string(chain, 'depositStatus')
-                active = (withdraw == 'allowed') and (deposit == 'allowed')
-                precision = self.safe_integer(chain, 'withdrawPrecision')
-                fee = self.safe_number(chain, 'transactFeeWithdraw')
-                networks[network] = {
-                    'info': chain,
-                    'id': networkId,
-                    'network': network,
-                    'limits': {
-                        'withdraw': {
-                            'min': minWithdraw,
-                            'max': maxWithdraw,
-                        },
-                    },
-                    'active': active,
-                    'fee': fee,
-                    'precision': precision,
-                }
-            networksKeys = list(networks.keys())
-            networkLength = len(networksKeys)
+        for i in range(0, len(currencies)):
+            currency = currencies[i]
+            id = self.safe_value(currency, 'name')
+            precision = self.safe_integer(currency, 'withdraw-precision')
+            code = self.safe_currency_code(id)
+            depositEnabled = self.safe_value(currency, 'deposit-enabled')
+            withdrawEnabled = self.safe_value(currency, 'withdraw-enabled')
+            countryDisabled = self.safe_value(currency, 'country-disabled')
+            visible = self.safe_value(currency, 'visible', False)
+            state = self.safe_string(currency, 'state')
+            active = visible and depositEnabled and withdrawEnabled and (state == 'online') and not countryDisabled
+            name = self.safe_string(currency, 'display-name')
             result[code] = {
-                'info': entry,
+                'id': id,
                 'code': code,
-                'id': currencyId,
-                'active': currencyActive,
-                'fee': fee if (networkLength <= 1) else None,
-                'name': None,
+                'type': 'crypto',
+                # 'payin': currency['deposit-enabled'],
+                # 'payout': currency['withdraw-enabled'],
+                # 'transfer': None,
+                'name': name,
+                'active': active,
+                'deposit': depositEnabled,
+                'withdraw': withdrawEnabled,
+                'fee': None,  # todo need to fetch from fee endpoint
+                'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': None,
-                        'max': None,
+                        'min': math.pow(10, -precision),
+                        'max': math.pow(10, precision),
+                    },
+                    'deposit': {
+                        'min': self.safe_number(currency, 'deposit-min-amount'),
+                        'max': math.pow(10, precision),
                     },
                     'withdraw': {
-                        'min': minWithdraw if (networkLength <= 1) else None,
-                        'max': maxWithdraw if (networkLength <= 1) else None,
+                        'min': self.safe_number(currency, 'withdraw-min-amount'),
+                        'max': math.pow(10, precision),
                     },
                 },
-                'precision': precision if (networkLength <= 1) else None,
-                'networks': networks,
+                'info': currency,
             }
         return result
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        await self.load_accounts()
-        method = self.options['fetchBalanceMethod']
-        request = {
-            'id': self.accounts[0]['id'],
-        }
-        response = await getattr(self, method)(self.extend(request, params))
+    def parse_balance(self, response):
         balances = self.safe_value(response['data'], 'list', [])
         result = {'info': response}
         for i in range(0, len(balances)):
@@ -885,7 +879,17 @@ class cdax(Exchange):
             if balance['type'] == 'frozen':
                 account['used'] = self.safe_string(balance, 'balance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        await self.load_accounts()
+        method = self.options['fetchBalanceMethod']
+        request = {
+            'id': self.accounts[0]['id'],
+        }
+        response = await getattr(self, method)(self.extend(request, params))
+        return self.parse_balance(response)
 
     async def fetch_orders_by_states(self, states, symbol=None, since=None, limit=None, params={}):
         await self.load_markets()
@@ -1032,32 +1036,34 @@ class cdax(Exchange):
         id = self.safe_string(order, 'id')
         side = None
         type = None
-        status = None
-        if 'type' in order:
-            orderType = order['type'].split('-')
-            side = orderType[0]
-            type = orderType[1]
-            status = self.parse_order_status(self.safe_string(order, 'state'))
+        status = self.parse_order_status(self.safe_string(order, 'state'))
+        orderType = self.safe_string(order, 'type')
+        if orderType is not None:
+            parts = orderType.split('-')
+            side = self.safe_string(parts, 0)
+            type = self.safe_string(parts, 1)
         marketId = self.safe_string(order, 'symbol')
         market = self.safe_market(marketId, market)
-        symbol = self.safe_symbol(marketId, market)
+        symbol = market['symbol']
         timestamp = self.safe_integer(order, 'created-at')
         clientOrderId = self.safe_string(order, 'client-order-id')
-        amount = self.safe_string(order, 'amount')
-        filled = self.safe_string_2(order, 'filled-amount', 'field-amount')  # typo in their API, filled amount
-        price = self.safe_string(order, 'price')
-        cost = self.safe_string_2(order, 'filled-cash-amount', 'field-cash-amount')  # same typo
-        feeCost = self.safe_number_2(order, 'filled-fees', 'field-fees')  # typo in their API, filled fees
+        filledString = self.safe_string_2(order, 'filled-amount', 'field-amount')  # typo in their API, filled amount
+        priceString = self.safe_string(order, 'price')
+        costString = self.safe_string_2(order, 'filled-cash-amount', 'field-cash-amount')  # same typo
+        amountString = self.safe_string(order, 'amount')
+        if orderType == 'buy-market':
+            amountString = None
+        feeCostString = self.safe_string_2(order, 'filled-fees', 'field-fees')  # typo in their API, filled fees
         fee = None
-        if feeCost is not None:
+        if feeCostString is not None:
             feeCurrency = None
             if market is not None:
                 feeCurrency = market['quote'] if (side == 'sell') else market['base']
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrency,
             }
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1069,12 +1075,12 @@ class cdax(Exchange):
             'timeInForce': None,
             'postOnly': None,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': None,
             'average': None,
-            'cost': cost,
-            'amount': amount,
-            'filled': filled,
+            'cost': costString,
+            'amount': amountString,
+            'filled': filledString,
             'remaining': None,
             'status': status,
             'fee': fee,
@@ -1350,14 +1356,21 @@ class cdax(Exchange):
         feeCost = self.safe_number(transaction, 'fee')
         if feeCost is not None:
             feeCost = abs(feeCost)
+        address = self.safe_string(transaction, 'address')
+        network = self.safe_string_upper(transaction, 'chain')
         return {
             'info': transaction,
             'id': self.safe_string(transaction, 'id'),
             'txid': self.safe_string(transaction, 'tx-hash'),
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'address': self.safe_string(transaction, 'address'),
+            'network': network,
+            'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': self.safe_number(transaction, 'amount'),
             'currency': code,

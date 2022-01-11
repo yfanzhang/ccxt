@@ -465,43 +465,7 @@ class liquid extends Exchange {
         return $result;
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privateGetAccounts ($params);
-        //
-        //     {
-        //         crypto_accounts => array(
-        //             array(
-        //                 id => 2221179,
-        //                 currency => 'USDT',
-        //                 $balance => '0.0',
-        //                 reserved_balance => '0.0',
-        //                 pusher_channel => 'user_xxxxx_account_usdt',
-        //                 lowest_offer_interest_rate => null,
-        //                 highest_offer_interest_rate => null,
-        //                 address => '0',
-        //                 currency_symbol => 'USDT',
-        //                 minimum_withdraw => null,
-        //                 currency_type => 'crypto'
-        //             ),
-        //         ),
-        //         fiat_accounts => array(
-        //             {
-        //                 id => 1112734,
-        //                 currency => 'USD',
-        //                 $balance => '0.0',
-        //                 reserved_balance => '0.0',
-        //                 pusher_channel => 'user_xxxxx_account_usd',
-        //                 lowest_offer_interest_rate => null,
-        //                 highest_offer_interest_rate => null,
-        //                 currency_symbol => '$',
-        //                 send_to_btc_address => null,
-        //                 exchange_rate => '1.0',
-        //                 currency_type => 'fiat'
-        //             }
-        //         )
-        //     }
-        //
+    public function parse_balance($response) {
         $result = array(
             'info' => $response,
             'timestamp' => null,
@@ -527,7 +491,47 @@ class liquid extends Exchange {
             $account['used'] = $this->safe_string($balance, 'reserved_balance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privateGetAccounts ($params);
+        //
+        //     {
+        //         crypto_accounts => array(
+        //             array(
+        //                 id => 2221179,
+        //                 currency => 'USDT',
+        //                 balance => '0.0',
+        //                 reserved_balance => '0.0',
+        //                 pusher_channel => 'user_xxxxx_account_usdt',
+        //                 lowest_offer_interest_rate => null,
+        //                 highest_offer_interest_rate => null,
+        //                 address => '0',
+        //                 currency_symbol => 'USDT',
+        //                 minimum_withdraw => null,
+        //                 currency_type => 'crypto'
+        //             ),
+        //         ),
+        //         fiat_accounts => array(
+        //             {
+        //                 id => 1112734,
+        //                 currency => 'USD',
+        //                 balance => '0.0',
+        //                 reserved_balance => '0.0',
+        //                 pusher_channel => 'user_xxxxx_account_usd',
+        //                 lowest_offer_interest_rate => null,
+        //                 highest_offer_interest_rate => null,
+        //                 currency_symbol => '$',
+        //                 send_to_btc_address => null,
+        //                 exchange_rate => '1.0',
+        //                 currency_type => 'fiat'
+        //             }
+        //         )
+        //     }
+        //
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -992,31 +996,34 @@ class liquid extends Exchange {
         $currency = $this->currency($code);
         $request = array(
             // 'auth_code' => '', // optional 2fa $code
-            'currency' => $currency['id'],
-            'address' => $address,
-            'amount' => $amount,
-            // 'payment_id' => $tag, // for XRP only
-            // 'memo_type' => 'text', // 'text', 'id' or 'hash', for XLM only
-            // 'memo_value' => $tag, // for XLM only
+            'crypto_withdrawal' => array(
+                'currency' => $currency['id'],
+                'address' => $address,
+                'amount' => $amount,
+                // 'payment_id' => $tag, // for XRP only
+                // 'memo_type' => 'text', // 'text', 'id' or 'hash', for XLM only
+                // 'memo_value' => $tag, // for XLM only
+            ),
         );
         if ($tag !== null) {
             if ($code === 'XRP') {
-                $request['payment_id'] = $tag;
+                $request['crypto_withdrawal']['payment_id'] = $tag;
             } else if ($code === 'XLM') {
-                $request['memo_type'] = 'text'; // overrideable via $params
-                $request['memo_value'] = $tag;
+                $request['crypto_withdrawal']['memo_type'] = 'text'; // overrideable via $params
+                $request['crypto_withdrawal']['memo_value'] = $tag;
             } else {
                 throw new NotSupported($this->id . ' withdraw() only supports a $tag along the $address for XRP or XLM');
             }
         }
         $networks = $this->safe_value($this->options, 'networks', array());
-        $network = $this->safe_string_upper($params, 'network'); // this line allows the user to specify either ERC20 or ETH
+        $paramsCwArray = $this->safe_value($params, 'crypto_withdrawal', array());
+        $network = $this->safe_string_upper($paramsCwArray, 'network'); // this line allows the user to specify either ERC20 or ETH
         $network = $this->safe_string($networks, $network, $network); // handle ERC20>ETH alias
         if ($network !== null) {
-            $request['network'] = $network;
-            $params = $this->omit($params, 'network');
+            $request['crypto_withdrawal']['network'] = $network;
+            $params['crypto_withdrawal'] = $this->omit($params['crypto_withdrawal'], 'network');
         }
-        $response = yield $this->privatePostCryptoWithdrawals (array_merge($request, $params));
+        $response = yield $this->privatePostCryptoWithdrawals ($this->deep_extend($request, $params));
         //
         //     {
         //         "id" => 1353,
@@ -1104,7 +1111,7 @@ class liquid extends Exchange {
         //         broadcasted_at => null,
         //         wallet_label => null,
         //         chain_name => 'Bitcoin',
-        //         network => null
+        //         $network => null
         //     ),
         //
         // fetchWithdrawals
@@ -1123,7 +1130,7 @@ class liquid extends Exchange {
         //         broadcasted_at => '1614720762',
         //         wallet_label => 'btc',
         //         chain_name => 'Bitcoin',
-        //         network => null
+        //         $network => null
         //     ),
         //
         // fetchDeposits
@@ -1143,14 +1150,20 @@ class liquid extends Exchange {
         $amountString = $this->safe_string($transaction, 'amount');
         $feeCostString = $this->safe_string($transaction, 'withdrawal_fee');
         $amount = $this->parse_number(Precise::string_sub($amountString, $feeCostString));
+        $network = $this->safe_string($transaction, 'chain_name');
         return array(
             'info' => $transaction,
             'id' => $id,
             'txid' => $txid,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
+            'network' => $network,
             'address' => $address,
+            'addressTo' => null,
+            'addressFrom' => null,
             'tag' => $tag,
+            'tagTo' => null,
+            'tagFrom' => null,
             'type' => $type,
             'amount' => $amount,
             'currency' => $code,

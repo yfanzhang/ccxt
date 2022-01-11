@@ -146,7 +146,9 @@ module.exports = class yobit extends Exchange {
                 'LUNA': 'Luna Coin',
                 'MASK': 'Yobit MASK',
                 'MDT': 'Midnight',
+                'MEME': 'Memez Token', // conflict with Meme Inu / Degenerator Meme
                 'MIS': 'MIScoin',
+                'MM': 'MasterMint', // conflict with MilliMeter
                 'NAV': 'NavajoCoin',
                 'NBT': 'NiceBytes',
                 'OMG': 'OMGame',
@@ -166,6 +168,7 @@ module.exports = class yobit extends Exchange {
                 'REP': 'Republicoin',
                 'RUR': 'RUB',
                 'SBTC': 'Super Bitcoin',
+                'SMC': 'SmartCoin',
                 'SOLO': 'SoloCoin',
                 'SUPER': 'SuperCoin',
                 'TTC': 'TittieCoin',
@@ -173,6 +176,7 @@ module.exports = class yobit extends Exchange {
                 'UST': 'Uservice',
                 'VOL': 'VolumeCoin',
                 'XIN': 'XINCoin',
+                'XMT': 'SummitCoin',
                 'XRA': 'Ratecoin',
             },
             'options': {
@@ -216,6 +220,28 @@ module.exports = class yobit extends Exchange {
         });
     }
 
+    parseBalance (response) {
+        const balances = this.safeValue (response, 'return', {});
+        const timestamp = this.safeInteger (balances, 'server_time');
+        const result = {
+            'info': response,
+            'timestamp': timestamp,
+            'datetime': this.iso8601 (timestamp),
+        };
+        const free = this.safeValue (balances, 'funds', {});
+        const total = this.safeValue (balances, 'funds_incl_orders', {});
+        const currencyIds = Object.keys (this.extend (free, total));
+        for (let i = 0; i < currencyIds.length; i++) {
+            const currencyId = currencyIds[i];
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['free'] = this.safeString (free, currencyId);
+            account['total'] = this.safeString (total, currencyId);
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
         await this.loadMarkets ();
         const response = await this.privatePostGetInfo (params);
@@ -244,25 +270,7 @@ module.exports = class yobit extends Exchange {
         //         }
         //     }
         //
-        const balances = this.safeValue (response, 'return', {});
-        const timestamp = this.safeInteger (balances, 'server_time');
-        const result = {
-            'info': response,
-            'timestamp': timestamp,
-            'datetime': this.iso8601 (timestamp),
-        };
-        const free = this.safeValue (balances, 'funds', {});
-        const total = this.safeValue (balances, 'funds_incl_orders', {});
-        const currencyIds = Object.keys (this.extend (free, total));
-        for (let i = 0; i < currencyIds.length; i++) {
-            const currencyId = currencyIds[i];
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['free'] = this.safeString (free, currencyId);
-            account['total'] = this.safeString (total, currencyId);
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     async fetchMarkets (params = {}) {
@@ -622,7 +630,7 @@ module.exports = class yobit extends Exchange {
         const fee = undefined;
         const type = 'limit';
         const side = this.safeString (order, 'type');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': undefined,

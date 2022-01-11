@@ -280,9 +280,7 @@ module.exports = class btcalpha extends Exchange {
         return this.parseOHLCVs (response, market, timeframe, since, limit);
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetWallets (params);
+    parseBalance (response) {
         const result = { 'info': response };
         for (let i = 0; i < response.length; i++) {
             const balance = response[i];
@@ -293,7 +291,13 @@ module.exports = class btcalpha extends Exchange {
             account['total'] = this.safeString (balance, 'balance');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetWallets (params);
+        return this.parseBalance (response);
     }
 
     parseOrderStatus (status) {
@@ -352,7 +356,7 @@ module.exports = class btcalpha extends Exchange {
         const id = this.safeString2 (order, 'oid', 'id');
         const trades = this.safeValue (order, 'trades');
         const side = this.safeString2 (order, 'my_side', 'type');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': undefined,
             'datetime': this.iso8601 (timestamp),

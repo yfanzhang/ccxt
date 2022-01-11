@@ -12,7 +12,7 @@ module.exports = class oceanex extends Exchange {
         return this.deepExtend (super.describe (), {
             'id': 'oceanex',
             'name': 'OceanEx',
-            'countries': [ 'LU', 'CN', 'SG' ],
+            'countries': [ 'BS' ], // Bahamas
             'version': 'v1',
             'rateLimit': 3000,
             'urls': {
@@ -31,9 +31,9 @@ module.exports = class oceanex extends Exchange {
                 'fetchAllTradingFees': true,
                 'fetchBalance': true,
                 'fetchClosedOrders': true,
-                'fetchCurrencies': undefined,
                 'fetchFundingFees': undefined,
                 'fetchMarkets': true,
+                'fetchOHLCV': true,
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
@@ -47,15 +47,18 @@ module.exports = class oceanex extends Exchange {
                 'fetchTradingLimits': undefined,
             },
             'timeframes': {
-                '1m': '1m',
-                '5m': '5m',
-                '15m': '15m',
-                '30m': '30m',
-                '1h': '1h',
-                '4h': '4h',
-                '12h': '12h',
-                '1d': '1d',
-                '1w': '1w',
+                '1m': '1',
+                '5m': '5',
+                '15m': '15',
+                '30m': '30',
+                '1h': '60',
+                '2h': '120',
+                '4h': '240',
+                '6h': '360',
+                '12h': '720',
+                '1d': '1440',
+                '3d': '4320',
+                '1w': '10080',
             },
             'api': {
                 'public': {
@@ -68,6 +71,9 @@ module.exports = class oceanex extends Exchange {
                         'fees/trading',
                         'trades',
                         'timestamp',
+                    ],
+                    'post': [
+                        'k',
                     ],
                 },
                 'private': {
@@ -437,9 +443,7 @@ module.exports = class oceanex extends Exchange {
         return this.safeValue (response, 'data');
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        const response = await this.privateGetMembersMe (params);
+    parseBalance (response) {
         const data = this.safeValue (response, 'data');
         const balances = this.safeValue (data, 'accounts');
         const result = { 'info': response };
@@ -452,7 +456,13 @@ module.exports = class oceanex extends Exchange {
             account['used'] = this.safeString (balance, 'locked');
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        const response = await this.privateGetMembersMe (params);
+        return this.parseBalance (response);
     }
 
     async createOrder (symbol, type, side, amount, price = undefined, params = {}) {
@@ -540,6 +550,43 @@ module.exports = class oceanex extends Exchange {
         return result;
     }
 
+    parseOHLCV (ohlcv, market = undefined) {
+        // [
+        //    1559232000,
+        //    8889.22,
+        //    9028.52,
+        //    8889.22,
+        //    9028.52
+        //    0.3121
+        // ]
+        return [
+            this.safeTimestamp (ohlcv, 0),
+            this.safeNumber (ohlcv, 1),
+            this.safeNumber (ohlcv, 2),
+            this.safeNumber (ohlcv, 3),
+            this.safeNumber (ohlcv, 4),
+            this.safeNumber (ohlcv, 5),
+        ];
+    }
+
+    async fetchOHLCV (symbol, timeframe = '1m', since = undefined, limit = undefined, params = {}) {
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'market': market['id'],
+            'period': this.timeframes[timeframe],
+        };
+        if (since !== undefined) {
+            request['timestamp'] = since;
+        }
+        if (limit !== undefined) {
+            request['limit'] = limit;
+        }
+        const response = await this.publicPostK (this.extend (request, params));
+        const ohlcvs = this.safeValue (response, 'data', []);
+        return this.parseOHLCVs (ohlcvs, market, timeframe, since, limit);
+    }
+
     parseOrder (order, market = undefined) {
         //
         //     {
@@ -570,7 +617,7 @@ module.exports = class oceanex extends Exchange {
         const amount = this.safeString (order, 'volume');
         const remaining = this.safeString (order, 'remaining_volume');
         const filled = this.safeString (order, 'executed_volume');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': this.safeString (order, 'id'),
             'clientOrderId': undefined,

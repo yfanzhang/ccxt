@@ -17,7 +17,7 @@ class exmo extends Exchange {
         return $this->deep_extend(parent::describe (), array(
             'id' => 'exmo',
             'name' => 'EXMO',
-            'countries' => array( 'ES', 'RU' ), // Spain, Russia
+            'countries' => array( 'LT' ), // Lithuania
             'rateLimit' => 350, // once every 350 ms ≈ 180 requests per minute ≈ 3 requests per second
             'version' => 'v1.1',
             'has' => array(
@@ -39,7 +39,6 @@ class exmo extends Exchange {
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTrades' => true,
-                'fetchTradingFee' => true,
                 'fetchTradingFees' => true,
                 'fetchTransactions' => true,
                 'fetchWithdrawals' => true,
@@ -523,21 +522,7 @@ class exmo extends Exchange {
         );
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privatePostUserInfo ($params);
-        //
-        //     {
-        //         "uid":131685,
-        //         "server_date":1628999600,
-        //         "balances":array(
-        //             "EXM":"0",
-        //             "USD":"0",
-        //             "EUR":"0",
-        //             "GBP":"0",
-        //         ),
-        //     }
-        //
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         $free = $this->safe_value($response, 'balances', array());
         $used = $this->safe_value($response, 'reserved', array());
@@ -554,7 +539,25 @@ class exmo extends Exchange {
             }
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privatePostUserInfo ($params);
+        //
+        //     {
+        //         "uid":131685,
+        //         "server_date":1628999600,
+        //         "balances":array(
+        //             "EXM":"0",
+        //             "USD":"0",
+        //             "EUR":"0",
+        //             "GBP":"0",
+        //         ),
+        //     }
+        //
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -693,9 +696,9 @@ class exmo extends Exchange {
         $symbol = null;
         $id = $this->safe_string($trade, 'trade_id');
         $orderId = $this->safe_string($trade, 'order_id');
-        $price = $this->safe_number($trade, 'price');
-        $amount = $this->safe_number($trade, 'quantity');
-        $cost = $this->safe_number($trade, 'amount');
+        $priceString = $this->safe_string($trade, 'price');
+        $amountString = $this->safe_string($trade, 'quantity');
+        $costString = $this->safe_string($trade, 'amount');
         $side = $this->safe_string($trade, 'type');
         $type = null;
         $marketId = $this->safe_string($trade, 'pair');
@@ -714,21 +717,21 @@ class exmo extends Exchange {
         }
         $takerOrMaker = $this->safe_string($trade, 'exec_type');
         $fee = null;
-        $feeCost = $this->safe_number($trade, 'commission_amount');
-        if ($feeCost !== null) {
+        $feeCostString = $this->safe_string($trade, 'commission_amount');
+        if ($feeCostString !== null) {
             $feeCurrencyId = $this->safe_string($trade, 'commission_currency');
             $feeCurrencyCode = $this->safe_currency_code($feeCurrencyId);
-            $feeRate = $this->safe_number($trade, 'commission_percent');
-            if ($feeRate !== null) {
-                $feeRate /= 1000;
+            $feeRateString = $this->safe_string($trade, 'commission_percent');
+            if ($feeRateString !== null) {
+                $feeRateString = Precise::string_div($feeRateString, '1000', 18);
             }
             $fee = array(
-                'cost' => $feeCost,
+                'cost' => $feeCostString,
                 'currency' => $feeCurrencyCode,
-                'rate' => $feeRate,
+                'rate' => $feeRateString,
             );
         }
-        return array(
+        return $this->safe_trade(array(
             'id' => $id,
             'info' => $trade,
             'timestamp' => $timestamp,
@@ -738,11 +741,11 @@ class exmo extends Exchange {
             'type' => $type,
             'side' => $side,
             'takerOrMaker' => $takerOrMaker,
-            'price' => $price,
-            'amount' => $amount,
-            'cost' => $cost,
+            'price' => $priceString,
+            'amount' => $amountString,
+            'cost' => $costString,
             'fee' => $fee,
-        );
+        ), $market);
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
@@ -1317,6 +1320,7 @@ class exmo extends Exchange {
                 );
             }
         }
+        $network = $this->safe_string($transaction, 'provider');
         return array(
             'info' => $transaction,
             'id' => $id,
@@ -1324,6 +1328,7 @@ class exmo extends Exchange {
             'datetime' => $this->iso8601($timestamp),
             'currency' => $code,
             'amount' => $amount,
+            'network' => $network,
             'address' => $address,
             'addressTo' => $address,
             'addressFrom' => null,

@@ -350,6 +350,12 @@ class bitfinex2(bitfinex):
     def get_currency_id(self, code):
         return 'f' + code
 
+    def get_currency_name(self, code):
+        # temporary fix for transpiler recognition, even though self is in parent class
+        if code in self.options['currencyNames']:
+            return self.options['currencyNames'][code]
+        raise NotSupported(self.id + ' ' + code + ' not supported for withdrawal')
+
     async def fetch_status(self, params={}):
         #
         #    [1]  # operative
@@ -365,7 +371,7 @@ class bitfinex2(bitfinex):
         return self.status
 
     async def fetch_markets(self, params={}):
-        # todo drop v1 in favor of v2 configs
+        # todo drop v1 in favor of v2 configs  ( temp-reference for v2update: https://pastebin.com/raw/S8CmqSHQ )
         # pub:list:pair:exchange,pub:list:pair:margin,pub:list:pair:futures,pub:info:pair
         v2response = await self.publicGetConfPubListPairFutures(params)
         v1response = await self.v1GetSymbolsDetails(params)
@@ -377,8 +383,8 @@ class bitfinex2(bitfinex):
             spot = True
             if self.in_array(id, futuresMarketIds):
                 spot = False
-            futures = not spot
-            type = 'spot' if spot else 'futures'
+            future = not spot
+            type = 'spot' if spot else 'future'
             baseId = None
             quoteId = None
             if id.find(':') >= 0:
@@ -430,7 +436,7 @@ class bitfinex2(bitfinex):
                 'swap': False,
                 'spot': spot,
                 'margin': margin,
-                'futures': futures,
+                'future': future,
             })
         return result
 
@@ -554,11 +560,14 @@ class bitfinex2(bitfinex):
             fid = 'f' + id
             result[code] = {
                 'id': fid,
+                'uppercaseId': id,
                 'code': code,
                 'info': [id, label, pool, feeValues, undl],
                 'type': type,
                 'name': name,
                 'active': True,
+                'deposit': None,
+                'withdraw': None,
                 'fee': fee,
                 'precision': precision,
                 'limits': {
@@ -602,7 +611,7 @@ class bitfinex2(bitfinex):
                 account['total'] = self.safe_string(balance, 2)
                 account['free'] = self.safe_string(balance, 4)
                 result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
 
     async def transfer(self, code, amount, fromAccount, toAccount, params={}):
         # transferring between derivatives wallet and regular wallet is not documented in their API
@@ -973,7 +982,7 @@ class bitfinex2(bitfinex):
         price = self.safe_string(order, 16)
         average = self.safe_string(order, 17)
         clientOrderId = self.safe_string(order, 2)
-        return self.safe_order2({
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1233,7 +1242,7 @@ class bitfinex2(bitfinex):
     async def fetch_deposit_address(self, code, params={}):
         await self.load_markets()
         # todo rewrite for https://api-pub.bitfinex.com//v2/conf/pub:map:tx:method
-        name = self.getCurrencyName(code)
+        name = self.get_currency_name(code)
         request = {
             'method': name,
             'wallet': 'exchange',  # 'exchange', 'margin', 'funding' and also old labels 'exchange', 'trading', 'deposit', respectively
@@ -1278,6 +1287,7 @@ class bitfinex2(bitfinex):
             'ERROR': 'failed',
             'FAILURE': 'failed',
             'CANCELED': 'canceled',
+            'COMPLETED': 'ok',
         }
         return self.safe_string(statuses, status, status)
 
@@ -1325,12 +1335,12 @@ class bitfinex2(bitfinex):
         #         -0.00135,  # FEES
         #         null,
         #         null,
-        #         'DESTINATION_ADDRESS',
+        #         '0x38110e0Fc932CB2BE...........',  # DESTINATION_ADDRESS
         #         null,
         #         null,
         #         null,
-        #         'TRANSACTION_ID',
-        #         "Purchase of 100 pizzas",  # WITHDRAW_TRANSACTION_NOTE
+        #         '0x523ec8945500.....................................',  # TRANSACTION_ID
+        #         "Purchase of 100 pizzas",  # WITHDRAW_TRANSACTION_NOTE, might also be: null
         #     ]
         #
         transactionLength = len(transaction)
@@ -1345,7 +1355,7 @@ class bitfinex2(bitfinex):
         feeCost = None
         txid = None
         addressTo = None
-        if transactionLength < 9:
+        if transactionLength == 8:
             data = self.safe_value(transaction, 4, [])
             timestamp = self.safe_integer(transaction, 0)
             if currency is not None:
@@ -1361,8 +1371,11 @@ class bitfinex2(bitfinex):
                 status = 'failed'
             tag = self.safe_string(data, 3)
             type = 'withdrawal'
-        else:
+        elif transactionLength == 22:
             id = self.safe_string(transaction, 0)
+            currencyId = self.safe_string(transaction, 1)
+            currency = self.safe_currency(currencyId, currency)
+            code = currency['code']
             timestamp = self.safe_integer(transaction, 5)
             updated = self.safe_integer(transaction, 6)
             status = self.parse_transaction_status(self.safe_string(transaction, 9))
@@ -1383,6 +1396,7 @@ class bitfinex2(bitfinex):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'addressFrom': None,
             'address': addressTo,  # self is actually the tag for XRP transfers(the address is missing)
             'addressTo': addressTo,
@@ -1408,7 +1422,7 @@ class bitfinex2(bitfinex):
         method = 'privatePostAuthRMovementsHist'
         if code is not None:
             currency = self.currency(code)
-            request['currency'] = currency['id']
+            request['currency'] = currency['uppercaseId']
             method = 'privatePostAuthRMovementsCurrencyHist'
         if since is not None:
             request['start'] = since
@@ -1434,12 +1448,12 @@ class bitfinex2(bitfinex):
         #             -0.00135,  # FEES
         #             null,
         #             null,
-        #             'DESTINATION_ADDRESS',
+        #             '0x38110e0Fc932CB2BE...........',  # DESTINATION_ADDRESS
         #             null,
         #             null,
         #             null,
-        #             'TRANSACTION_ID',
-        #             "Purchase of 100 pizzas",  # WITHDRAW_TRANSACTION_NOTE
+        #             '0x523ec8945500.....................................',  # TRANSACTION_ID
+        #             "Purchase of 100 pizzas",  # WITHDRAW_TRANSACTION_NOTE, might also be: null
         #         ]
         #     ]
         #
@@ -1450,7 +1464,7 @@ class bitfinex2(bitfinex):
         await self.load_markets()
         currency = self.currency(code)
         # todo rewrite for https://api-pub.bitfinex.com//v2/conf/pub:map:tx:method
-        name = self.getCurrencyName(code)
+        name = self.get_currency_name(code)
         request = {
             'method': name,
             'wallet': 'exchange',  # 'exchange', 'margin', 'funding' and also old labels 'exchange', 'trading', 'deposit', respectively

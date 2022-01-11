@@ -11,6 +11,7 @@ use \ccxt\ArgumentsRequired;
 use \ccxt\BadRequest;
 use \ccxt\InvalidAddress;
 use \ccxt\InvalidOrder;
+use \ccxt\NotSupported;
 use \ccxt\Precise;
 
 class okex extends Exchange {
@@ -25,45 +26,94 @@ class okex extends Exchange {
             'pro' => true,
             'certified' => true,
             'has' => array(
+                'margin' => true,
+                'swap' => true,
+                'future' => true,
+                'addMargin' => true,
+                'cancelAllOrders' => null,
                 'cancelOrder' => true,
+                'cancelOrders' => null,
                 'CORS' => null,
+                'createDepositAddress' => null,
                 'createOrder' => true,
+                'createReduceOnlyOrder' => null,
+                'deposit' => null,
+                'fetchAccounts' => null,
+                'fetchAllTradingFees' => null,
                 'fetchBalance' => true,
+                'fetchBidsAsks' => null,
                 'fetchBorrowRate' => true,
+                'fetchBorrowRateHistory' => null,
                 'fetchBorrowRates' => true,
+                'fetchBorrowRatesPerSymbol' => false,
+                'fetchCanceledOrders' => null,
+                'fetchClosedOrder' => null,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
+                'fetchDeposit' => null,
                 'fetchDepositAddress' => true,
-                'fetchDepositAddressByNetwork' => true,
+                'fetchDepositAddresses' => null,
+                'fetchDepositAddressesByNetwork' => true,
                 'fetchDeposits' => true,
+                'fetchFundingFee' => null,
+                'fetchFundingFees' => null,
                 'fetchFundingHistory' => true,
+                'fetchFundingRate' => true,
                 'fetchFundingRateHistory' => true,
+                'fetchFundingRates' => null,
                 'fetchIndexOHLCV' => true,
+                'fetchIsolatedPositions' => null,
+                'fetchL3OrderBook' => null,
                 'fetchLedger' => true,
+                'fetchLedgerEntry' => null,
+                'fetchLeverage' => true,
                 'fetchMarkets' => true,
+                'fetchMarketsByType' => true,
                 'fetchMarkOHLCV' => true,
+                'fetchMyBuys' => null,
+                'fetchMySells' => null,
                 'fetchMyTrades' => true,
+                'fetchNetworkDepositAddress' => null,
                 'fetchOHLCV' => true,
+                'fetchOpenOrder' => null,
                 'fetchOpenOrders' => true,
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
+                'fetchOrderBooks' => null,
+                'fetchOrders' => null,
+                'fetchOrdersByState' => null,
+                'fetchOrdersByStatus' => null,
                 'fetchOrderTrades' => true,
+                'fetchPartiallyFilledOrders' => null,
                 'fetchPosition' => true,
                 'fetchPositions' => true,
-                'fetchLeverage' => true,
+                'fetchPositionsRisk' => null,
+                'fetchPremiumIndexOHLCV' => null,
                 'fetchStatus' => true,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
+                'fetchTickersByType' => true,
                 'fetchTime' => true,
                 'fetchTrades' => true,
+                'fetchTradingFee' => true,
+                'fetchTradingFees' => null,
+                'fetchTradingLimits' => null,
+                'fetchTransactions' => null,
+                'fetchTransfers' => null,
+                'fetchWithdrawAddress' => null,
+                'fetchWithdrawAddressesByNetwork' => null,
+                'fetchWithdrawal' => null,
                 'fetchWithdrawals' => true,
-                'transfer' => true,
-                'withdraw' => true,
-                'setLeverage' => true,
-                'setPositionMode' => true,
-                'setMarginMode' => true,
-                'addMargin' => true,
+                'fetchWithdrawalWhitelist' => null,
+                'loadLeverageBrackets' => null,
                 'reduceMargin' => true,
+                'setLeverage' => true,
+                'setMarginMode' => true,
+                'setPositionMode' => true,
+                'signIn' => null,
+                'transfer' => true,
+                'transferOut' => false,
+                'withdraw' => true,
             ),
             'timeframes' => array(
                 '1m' => '1m',
@@ -160,6 +210,7 @@ class okex extends Exchange {
                         'account/interest-accrued' => 4,
                         'account/interest-rate' => 4,
                         'account/max-withdrawal' => 1,
+                        'asset/asset-valuation' => 1 / 5,
                         'asset/deposit-address' => 5 / 3,
                         'asset/balances' => 5 / 3,
                         'asset/transfer-state' => 10,
@@ -750,7 +801,7 @@ class okex extends Exchange {
         $fees = $this->safe_value_2($this->fees, $type, 'trading', array());
         $contractSize = null;
         if ($contract) {
-            $contractSize = $this->safe_string($market, 'ctVal');
+            $contractSize = $this->safe_number($market, 'ctVal');
         }
         $leverage = $this->safe_number($market, 'lever', 1);
         return array_merge($fees, array(
@@ -1416,7 +1467,7 @@ class okex extends Exchange {
         }
         $result['timestamp'] = $timestamp;
         $result['datetime'] = $this->iso8601($timestamp);
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
     }
 
     public function parse_funding_balance($response) {
@@ -1433,7 +1484,68 @@ class okex extends Exchange {
             $account['used'] = $this->safe_string($balance, 'frozenBal');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function parse_trading_fee($fee, $market = null) {
+        //
+        //     {
+        //         "category":"1",
+        //         "delivery":"",
+        //         "exercise":"",
+        //         "instType":"SPOT",
+        //         "level":"Lv1",
+        //         "maker":"-0.0008",
+        //         "taker":"-0.001",
+        //         "ts":"1639043138472"
+        //     }
+        //
+        return array(
+            'info' => $fee,
+            'symbol' => $this->safe_symbol(null, $market),
+            'maker' => $this->safe_number($fee, 'maker'),
+            'taker' => $this->safe_number($fee, 'taker'),
+        );
+    }
+
+    public function fetch_trading_fee($symbol, $params = array ()) {
+        yield $this->load_markets();
+        $market = $this->market($symbol);
+        $request = array(
+            'instType' => strtoupper($market['type']), // SPOT, MARGIN, SWAP, FUTURES, OPTION
+            // 'instId' => $market['id'], // only applicable to SPOT/MARGIN
+            // 'uly' => $market['id'], // only applicable to FUTURES/SWAP/OPTION
+            // 'category' => '1', // 1 = Class A, 2 = Class B, 3 = Class C, 4 = Class D
+        );
+        if ($market['spot']) {
+            $request['instId'] = $market['id'];
+        } else if ($market['swap'] || $market['futures'] || $market['option']) {
+            $request['uly'] = $market['baseId'] . '-' . $market['quoteId'];
+        } else {
+            throw new NotSupported($this->id . ' fetchTradingFee supports spot, swap, futures or option markets only');
+        }
+        $response = yield $this->privateGetAccountTradeFee (array_merge($request, $params));
+        //
+        //     {
+        //         "code":"0",
+        //         "data":array(
+        //             {
+        //                 "category":"1",
+        //                 "delivery":"",
+        //                 "exercise":"",
+        //                 "instType":"SPOT",
+        //                 "level":"Lv1",
+        //                 "maker":"-0.0008",
+        //                 "taker":"-0.001",
+        //                 "ts":"1639043138472"
+        //             }
+        //         ),
+        //         "msg":""
+        //     }
+        //
+        $data = $this->safe_value($response, 'data', array());
+        $first = $this->safe_value($data, 0, array());
+        return $this->parse_trading_fee($first, $market);
     }
 
     public function fetch_balance($params = array ()) {
@@ -1838,7 +1950,7 @@ class okex extends Exchange {
             $clientOrderId = null; // fix empty $clientOrderId string
         }
         $stopPrice = $this->safe_number($order, 'slTriggerPx');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -2767,6 +2879,7 @@ class okex extends Exchange {
             'id' => $id,
             'currency' => $code,
             'amount' => $amount,
+            'network' => null,
             'addressFrom' => $addressFrom,
             'addressTo' => $addressTo,
             'address' => $address,
@@ -3064,7 +3177,7 @@ class okex extends Exchange {
             'unrealizedPnl' => $this->parse_number($unrealizedPnlString),
             'percentage' => $percentage,
             'contracts' => $contracts,
-            'contractSize' => $this->parse_number($market['contractSize']),
+            'contractSize' => $this->safe_value($market, 'contractSize'),
             'markPrice' => $this->parse_number($markPriceString),
             'side' => $side,
             'hedged' => $hedged,
@@ -3216,11 +3329,6 @@ class okex extends Exchange {
         // in the response above $nextFundingRate is actually two funding rates from now
         //
         $nextFundingRateTimestamp = $this->safe_integer($fundingRate, 'fundingTime');
-        $previousFundingTimestamp = null;
-        if ($nextFundingRateTimestamp !== null) {
-            // eight hours
-            $previousFundingTimestamp = $nextFundingRateTimestamp - 28800000;
-        }
         $marketId = $this->safe_string($fundingRate, 'instId');
         $symbol = $this->safe_symbol($marketId, $market);
         $nextFundingRate = $this->safe_number($fundingRate, 'fundingRate');
@@ -3237,9 +3345,9 @@ class okex extends Exchange {
             'datetime' => null,
             'previousFundingRate' => null,
             'nextFundingRate' => $nextFundingRate,
-            'previousFundingTimestamp' => $previousFundingTimestamp, // subtract 8 hours
+            'previousFundingTimestamp' => null,
             'nextFundingTimestamp' => $nextFundingRateTimestamp,
-            'previousFundingDatetime' => $this->iso8601($previousFundingTimestamp),
+            'previousFundingDatetime' => null,
             'nextFundingDatetime' => $this->iso8601($nextFundingRateTimestamp),
         );
     }
@@ -3619,6 +3727,14 @@ class okex extends Exchange {
 
     public function add_margin($symbol, $amount, $params = array ()) {
         return yield $this->modify_margin_helper($symbol, $amount, 'add', $params);
+    }
+
+    public function set_sandbox_mode($enable) {
+        if ($enable) {
+            $this->headers['x-simulated-trading'] = 1;
+        } else if (is_array($this->headers) && array_key_exists('x-simulated-trading', $this->headers)) {
+            $this->headers = $this->omit($this->headers, 'x-simulated-trading');
+        }
     }
 
     public function handle_errors($httpCode, $reason, $url, $method, $headers, $body, $response, $requestHeaders, $requestBody) {

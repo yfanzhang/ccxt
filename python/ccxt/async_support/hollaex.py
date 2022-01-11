@@ -564,6 +564,23 @@ class hollaex(Exchange):
             self.safe_number(response, 'volume'),
         ]
 
+    def parse_balance(self, response):
+        timestamp = self.parse8601(self.safe_string(response, 'updated_at'))
+        result = {
+            'info': response,
+            'timestamp': timestamp,
+            'datetime': self.iso8601(timestamp),
+        }
+        currencyIds = list(self.currencies_by_id.keys())
+        for i in range(0, len(currencyIds)):
+            currencyId = currencyIds[i]
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(response, currencyId + '_available')
+            account['total'] = self.safe_string(response, currencyId + '_balance')
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         await self.load_markets()
         response = await self.privateGetUserBalance(params)
@@ -579,21 +596,7 @@ class hollaex(Exchange):
         #         # ...
         #     }
         #
-        timestamp = self.parse8601(self.safe_string(response, 'updated_at'))
-        result = {
-            'info': response,
-            'timestamp': timestamp,
-            'datetime': self.iso8601(timestamp),
-        }
-        currencyIds = list(self.currencies_by_id.keys())
-        for i in range(0, len(currencyIds)):
-            currencyId = currencyIds[i]
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(response, currencyId + '_available')
-            account['total'] = self.safe_string(response, currencyId + '_balance')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def fetch_open_order(self, id, symbol=None, params={}):
         await self.load_markets()
@@ -785,7 +788,7 @@ class hollaex(Exchange):
         amount = self.safe_string(order, 'size')
         filled = self.safe_string(order, 'filled')
         status = self.parse_order_status(self.safe_string(order, 'status'))
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': None,
             'timestamp': timestamp,
@@ -1171,6 +1174,7 @@ class hollaex(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'addressFrom': addressFrom,
             'address': address,
             'addressTo': addressTo,

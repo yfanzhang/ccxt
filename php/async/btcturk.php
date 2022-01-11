@@ -201,6 +201,26 @@ class btcturk extends Exchange {
         return $result;
     }
 
+    public function parse_balance($response) {
+        $data = $this->safe_value($response, 'data', array());
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        for ($i = 0; $i < count($data); $i++) {
+            $entry = $data[$i];
+            $currencyId = $this->safe_string($entry, 'asset');
+            $code = $this->safe_currency_code($currencyId);
+            $account = $this->account();
+            $account['total'] = $this->safe_string($entry, 'balance');
+            $account['free'] = $this->safe_string($entry, 'free');
+            $account['used'] = $this->safe_string($entry, 'locked');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         yield $this->load_markets();
         $response = yield $this->privateGetUsersBalances ($params);
@@ -220,23 +240,7 @@ class btcturk extends Exchange {
         //       )
         //     }
         //
-        $data = $this->safe_value($response, 'data', array());
-        $result = array(
-            'info' => $response,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        for ($i = 0; $i < count($data); $i++) {
-            $entry = $data[$i];
-            $currencyId = $this->safe_string($entry, 'asset');
-            $code = $this->safe_currency_code($currencyId);
-            $account = $this->account();
-            $account['total'] = $this->safe_string($entry, 'balance');
-            $account['free'] = $this->safe_string($entry, 'free');
-            $account['used'] = $this->safe_string($entry, 'locked');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -595,7 +599,7 @@ class btcturk extends Exchange {
         $timestamp = $this->safe_integer_2($order, 'updateTime', 'datetime');
         $rawStatus = $this->safe_string($order, 'status');
         $status = $this->parse_order_status($rawStatus);
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'price' => $price,

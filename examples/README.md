@@ -53,15 +53,17 @@ php -f path/to/example.php # substitute for actual filename here
 
 [Blockpit](https://www.blockpit.io) – Tax reporting and portfolio tracking for Cryptocurrencies, Cryptoderivates and DeFi.
 
+[DCAStack](https://www.dcastack.com/) – An automated open-source Dollar Cost Averaging bot for crypto (built with CCXT).
+
 [Projects based on ccxt](https://github.com/ccxt/ccxt/network/dependents) – A list of hundreds of ccxt-based projects by developers from all over the world!
 
 [The Evolution Of CCXT](https://www.youtube.com/watch?v=KnyduYTFm1c) – A Gource visualization on the development of the CCXT code repository.
 
-[Enigma Catalyst](https://blog.enigma.co/enigma-announces-catalyst-0-4-our-biggest-release-yet-fa31a5ffa4b1) – The major effort towards decentralized exchanges integrates ccxt!
-
 [Playing with CCXT in Google Colab](https://medium.com/@ccxt/playing-with-ccxt-in-google-colab-23522ac8a6cb) – An article on how useful Colab can be for quick prototyping and testing your trading ideas with CCXT.
 
 [What is the Best Crypto Trading Bot in 2020?](https://www.hodlbot.io/blog/ultimate-guide-on-crypto-trading-bots) – Ultimate guide on crypto trading bots in 2020 by HodlBlog.
+
+[Enigma Catalyst](https://blog.enigma.co/enigma-announces-catalyst-0-4-our-biggest-release-yet-fa31a5ffa4b1) – The major effort towards decentralized exchanges integrates ccxt!
 
 [Geographic Latency in Crypto: How to Optimally Co-Locate Your AWS Trading Server to Any Exchange API](https://elitwilliams.medium.com/geographic-latency-in-crypto-how-to-optimally-co-locate-your-aws-trading-server-to-any-exchange-58965ea173a8) – An article overviewing the aspects of latencies for global cryptocurrency trading.
 
@@ -149,6 +151,10 @@ php -f path/to/example.php # substitute for actual filename here
 [TensorTrade: Trade Efficiently with Reinforcement Learning](https://github.com/tensortrade-org/tensortrade) – TensorTrade is an open source Python framework for building, training, evaluating, and deploying robust trading algorithms using reinforcement learning.
 
 [Never Pay Fees Again: Mimic Market Buys with Limit Chase Orders in Python](https://nukewhales.com/p/limitchase.html) – A tutorial on how to automate your maker fees.
+
+[Step-By-Step Guide to Installing Python and CCXT Library](https://www.youtube.com/watch?v=bmKAtBfGk50) – A step-by-step video guide to installing Python and CCXT library which are used by many tools and bots running on MT4 and MT5 platforms on Windows.
+
+[Download Historical Data of All Cryptocoins with CCXT for free](https://www.linkedin.com/pulse/download-historical-data-all-cryptocoins-ccxt-gursel-karacor/) – An article on linked.in explaining how to download historical market data with CCXT.
 
 [비트코인 해외 거래소 API - 바이낸스 CCXT설치](https://www.youtube.com/watch?v=7dMGbjwZwlU) – Using CCXT to trade with Binance API, a video overview of CCXT in Korean.
 

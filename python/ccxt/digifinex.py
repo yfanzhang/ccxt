@@ -19,7 +19,6 @@ from ccxt.base.errors import NetworkError
 from ccxt.base.errors import DDoSProtection
 from ccxt.base.errors import RateLimitExceeded
 from ccxt.base.errors import InvalidNonce
-from ccxt.base.precise import Precise
 
 
 class digifinex(Exchange):
@@ -255,7 +254,9 @@ class digifinex(Exchange):
             code = self.safe_currency_code(id)
             depositStatus = self.safe_value(currency, 'deposit_status', 1)
             withdrawStatus = self.safe_value(currency, 'withdraw_status', 1)
-            active = depositStatus and withdrawStatus
+            deposit = depositStatus > 0
+            withdraw = withdrawStatus > 0
+            active = deposit and withdraw
             fee = self.safe_number(currency, 'withdraw_fee_rate')
             if code in result:
                 if isinstance(result[code]['info'], list):
@@ -270,6 +271,8 @@ class digifinex(Exchange):
                     'type': None,
                     'name': None,
                     'active': active,
+                    'deposit': deposit,
+                    'withdraw': withdraw,
                     'fee': fee,
                     'precision': 8,  # todo fix hardcoded value
                     'limits': {
@@ -431,6 +434,20 @@ class digifinex(Exchange):
             })
         return result
 
+    def parse_balance(self, response):
+        balances = self.safe_value(response, 'list', [])
+        result = {'info': response}
+        for i in range(0, len(balances)):
+            balance = balances[i]
+            currencyId = self.safe_string(balance, 'currency')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['used'] = self.safe_string(balance, 'frozen')
+            account['free'] = self.safe_string(balance, 'free')
+            account['total'] = self.safe_string(balance, 'total')
+            result[code] = account
+        return self.safe_balance(result)
+
     def fetch_balance(self, params={}):
         defaultType = self.safe_string(self.options, 'defaultType', 'spot')
         type = self.safe_string(params, 'type', defaultType)
@@ -448,18 +465,7 @@ class digifinex(Exchange):
         #             }
         #         ]
         #     }
-        balances = self.safe_value(response, 'list', [])
-        result = {'info': response}
-        for i in range(0, len(balances)):
-            balance = balances[i]
-            currencyId = self.safe_string(balance, 'currency')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['used'] = self.safe_string(balance, 'frozen')
-            account['free'] = self.safe_string(balance, 'free')
-            account['total'] = self.safe_string(balance, 'total')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         self.load_markets()
@@ -629,22 +635,19 @@ class digifinex(Exchange):
         side = self.safe_string_2(trade, 'type', 'side')
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'amount')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         marketId = self.safe_string(trade, 'symbol')
         symbol = self.safe_symbol(marketId, market, '_')
         takerOrMaker = self.safe_value(trade, 'is_maker')
-        feeCost = self.safe_number(trade, 'fee')
+        feeCostString = self.safe_string(trade, 'fee')
         fee = None
-        if feeCost is not None:
+        if feeCostString is not None:
             feeCurrencyId = self.safe_string(trade, 'fee_currency')
             feeCurrencyCode = self.safe_currency_code(feeCurrencyId)
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
             }
-        return {
+        return self.safe_trade({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -653,12 +656,12 @@ class digifinex(Exchange):
             'type': None,
             'order': orderId,
             'side': side,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': None,
             'takerOrMaker': takerOrMaker,
             'fee': fee,
-        }
+        }, market)
 
     def fetch_time(self, params={}):
         response = self.publicGetTime(params)
@@ -913,11 +916,11 @@ class digifinex(Exchange):
         status = self.parse_order_status(self.safe_string(order, 'status'))
         marketId = self.safe_string(order, 'symbol')
         symbol = self.safe_symbol(marketId, market, '_')
-        amount = self.safe_string(order, 'amount')
-        filled = self.safe_string(order, 'executed_amount')
-        price = self.safe_string(order, 'price')
-        average = self.safe_string(order, 'avg_price')
-        return self.safe_order2({
+        amountString = self.safe_string(order, 'amount')
+        filledString = self.safe_string(order, 'executed_amount')
+        priceString = self.safe_string(order, 'price')
+        averageString = self.safe_string(order, 'avg_price')
+        return self.safe_order({
             'info': order,
             'id': id,
             'clientOrderId': None,
@@ -929,13 +932,13 @@ class digifinex(Exchange):
             'timeInForce': None,
             'postOnly': None,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': None,
-            'amount': amount,
-            'filled': filled,
+            'amount': amountString,
+            'filled': filledString,
             'remaining': None,
             'cost': None,
-            'average': average,
+            'average': averageString,
             'status': status,
             'fee': None,
             'trades': None,
@@ -1077,23 +1080,23 @@ class digifinex(Exchange):
             request['limit'] = limit  # default 10, max 100
         response = self.privateGetMarketMytrades(self.extend(request, params))
         #
-        #     {
-        #         "code": 0,
-        #         "list": [
-        #             {
-        #                 "symbol": "BTC_USDT",
-        #                 "order_id": "6707cbdcda0edfaa7f4ab509e4cbf966",
-        #                 "id": 28457,
-        #                 "price": 0.1,
-        #                 "amount": 0,
-        #                 "fee": 0.096,
-        #                 "fee_currency": "USDT",
-        #                 "timestamp": 1499865549,
-        #                 "side": "buy",
-        #                 "is_maker": True
-        #             }
-        #         ]
-        #     }
+        #      {
+        #          "list":[
+        #              {
+        #                  "timestamp":1639506068,
+        #                  "is_maker":false,
+        #                  "id":"8975951332",
+        #                  "amount":31.83,
+        #                  "side":"sell_market",
+        #                  "symbol":"DOGE_USDT",
+        #                  "fee_currency":"USDT",
+        #                  "fee":0.01163774826
+        #                  ,"order_id":"32b169792f4a7a19e5907dc29fc123d4",
+        #                  "price":0.182811
+        #                }
+        #             ],
+        #           "code": 0
+        #      }
         #
         data = self.safe_value(response, 'list', [])
         return self.parse_trades(data, market, since, limit)
@@ -1323,12 +1326,16 @@ class digifinex(Exchange):
         fee = None
         if feeCost is not None:
             fee = {'currency': code, 'cost': feeCost}
+        network = self.safe_string(transaction, 'chain')
+        if network == '':
+            network = None
         return {
             'info': transaction,
             'id': id,
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': network,
             'address': address,
             'addressTo': address,
             'addressFrom': None,

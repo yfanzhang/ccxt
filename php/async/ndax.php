@@ -37,8 +37,8 @@ class ndax extends Exchange {
                 'fetchOpenOrders' => true,
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
-                'fetchOrderTrades' => true,
                 'fetchOrders' => true,
+                'fetchOrderTrades' => true,
                 'fetchTicker' => true,
                 'fetchTrades' => true,
                 'fetchWithdrawals' => true,
@@ -196,7 +196,7 @@ class ndax extends Exchange {
                 // these credentials are required for signIn() and withdraw()
                 'login' => true,
                 'password' => true,
-                'twofa' => true,
+                // 'twofa' => true,
             ),
             'precisionMode' => TICK_SIZE,
             'exceptions' => array(
@@ -227,8 +227,8 @@ class ndax extends Exchange {
 
     public function sign_in($params = array ()) {
         $this->check_required_credentials();
-        if ($this->login === null || $this->password === null || $this->twofa === null) {
-            throw new AuthenticationError($this->id . ' signIn() requires exchange.login, exchange.password and exchange.twofa credentials');
+        if ($this->login === null || $this->password === null) {
+            throw new AuthenticationError($this->id . ' signIn() requires exchange.login, exchange.password');
         }
         $request = array(
             'grant_type' => 'client_credentials', // the only supported value
@@ -250,6 +250,9 @@ class ndax extends Exchange {
         }
         $pending2faToken = $this->safe_string($response, 'Pending2FaToken');
         if ($pending2faToken !== null) {
+            if ($this->twofa === null) {
+                throw new AuthenticationError($this->id . ' signIn() requires exchange.twofa credentials');
+            }
             $this->options['pending2faToken'] = $pending2faToken;
             $request = array(
                 'Code' => $this->oath(),
@@ -885,6 +888,26 @@ class ndax extends Exchange {
         return $result;
     }
 
+    public function parse_balance($response) {
+        $result = array(
+            'info' => $response,
+            'timestamp' => null,
+            'datetime' => null,
+        );
+        for ($i = 0; $i < count($response); $i++) {
+            $balance = $response[$i];
+            $currencyId = $this->safe_string($balance, 'ProductId');
+            if (is_array($this->currencies_by_id) && array_key_exists($currencyId, $this->currencies_by_id)) {
+                $code = $this->safe_currency_code($currencyId);
+                $account = $this->account();
+                $account['total'] = $this->safe_string($balance, 'Amount');
+                $account['used'] = $this->safe_string($balance, 'Hold');
+                $result[$code] = $account;
+            }
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         $omsId = $this->safe_integer($this->options, 'omsId', 1);
         yield $this->load_markets();
@@ -928,21 +951,7 @@ class ndax extends Exchange {
         //         ),
         //     )
         //
-        $result = array(
-            'info' => $response,
-            'timestamp' => null,
-            'datetime' => null,
-        );
-        for ($i = 0; $i < count($response); $i++) {
-            $balance = $response[$i];
-            $currencyId = $this->safe_string($balance, 'ProductId');
-            $code = $this->safe_currency_code($currencyId);
-            $account = $this->account();
-            $account['total'] = $this->safe_string($balance, 'Amount');
-            $account['used'] = $this->safe_string($balance, 'Hold');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function parse_ledger_entry_type($type) {
@@ -1155,19 +1164,13 @@ class ndax extends Exchange {
         $side = $this->safe_string_lower($order, 'Side');
         $type = $this->safe_string_lower($order, 'OrderType');
         $clientOrderId = $this->safe_string_2($order, 'ReplacementClOrdId', 'ClientOrderId');
-        $price = $this->safe_number($order, 'Price', 0.0);
-        $price = ($price > 0.0) ? $price : null;
-        $amount = $this->safe_number($order, 'OrigQuantity');
-        $filled = $this->safe_number($order, 'QuantityExecuted');
-        $cost = $this->safe_number($order, 'GrossValueExecuted');
-        $average = $this->safe_number($order, 'AvgPrice', 0.0);
-        $average = ($average > 0) ? $average : null;
-        $stopPrice = $this->safe_number($order, 'StopPrice', 0.0);
-        $stopPrice = ($stopPrice > 0.0) ? $stopPrice : null;
-        $timeInForce = null;
+        $price = $this->safe_string($order, 'Price');
+        $amount = $this->safe_string($order, 'OrigQuantity');
+        $filled = $this->safe_string($order, 'QuantityExecuted');
+        $cost = $this->safe_string($order, 'GrossValueExecuted');
+        $average = $this->safe_string($order, 'AvgPrice');
+        $stopPrice = $this->parse_number($this->omit_zero($this->safe_string($order, 'StopPrice')));
         $status = $this->parse_order_status($this->safe_string($order, 'OrderState'));
-        $fee = null;
-        $trades = null;
         return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
@@ -1178,7 +1181,7 @@ class ndax extends Exchange {
             'status' => $status,
             'symbol' => $symbol,
             'type' => $type,
-            'timeInForce' => $timeInForce,
+            'timeInForce' => null,
             'postOnly' => null,
             'side' => $side,
             'price' => $price,
@@ -1188,9 +1191,9 @@ class ndax extends Exchange {
             'filled' => $filled,
             'average' => $average,
             'remaining' => null,
-            'fee' => $fee,
-            'trades' => $trades,
-        ));
+            'fee' => null,
+            'trades' => null,
+        ), $market);
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
@@ -2022,6 +2025,9 @@ class ndax extends Exchange {
         $sessionToken = $this->safe_string($this->options, 'sessionToken');
         if ($sessionToken === null) {
             throw new AuthenticationError($this->id . ' call signIn() method to obtain a session token');
+        }
+        if ($this->twofa === null) {
+            throw new AuthenticationError($this->id . ' withdraw() requires exchange.twofa credentials');
         }
         $this->check_address($address);
         $omsId = $this->safe_integer($this->options, 'omsId', 1);

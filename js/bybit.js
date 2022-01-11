@@ -20,6 +20,9 @@ module.exports = class bybit extends Exchange {
             'rateLimit': 100,
             'hostname': 'bybit.com', // bybit.com, bytick.com
             'has': {
+                'margin': false,
+                'swap': true,
+                'future': true,
                 'cancelAllOrders': true,
                 'cancelOrder': true,
                 'CORS': true,
@@ -51,8 +54,8 @@ module.exports = class bybit extends Exchange {
                 'fetchTrades': true,
                 'fetchTransactions': undefined,
                 'fetchWithdrawals': true,
-                'setMarginMode': true,
                 'setLeverage': true,
+                'setMarginMode': true,
             },
             'timeframes': {
                 '1m': '1',
@@ -96,6 +99,7 @@ module.exports = class bybit extends Exchange {
                 'referral': 'https://www.bybit.com/app/register?ref=X7Prm',
             },
             'api': {
+                // outdated endpoints -----------------------------------------
                 'spot': {
                     'public': {
                         'get': [
@@ -225,7 +229,64 @@ module.exports = class bybit extends Exchange {
                         ],
                     },
                 },
+                // new endpoints ------------------------------------------
                 'public': {
+                    'get': {
+                        // inverse swap
+                        'v2/public/orderBook/L2': 1,
+                        'v2/public/kline/list': 1,
+                        'v2/public/tickers': 1,
+                        'v2/public/trading-records': 1,
+                        'v2/public/symbols': 1,
+                        'v2/public/mark-price-kline': 1,
+                        'v2/public/index-price-kline': 1,
+                        'v2/public/premium-index-kline': 1,
+                        'v2/public/open-interest': 1,
+                        'v2/public/big-deal': 1,
+                        'v2/public/account-ratio': 1,
+                        'v2/public/funding-rate': 1,
+                        'v2/public/elite-ratio': 1,
+                        // linear swap USDT
+                        'public/linear/kline': 1,
+                        'public/linear/recent-trading-records': 1,
+                        'public/linear/funding/prev-funding-rate': 1,
+                        'public/linear/mark-price-kline': 1,
+                        'public/linear/index-price-kline': 1,
+                        'public/linear/premium-index-kline': 1,
+                        'public/linear/symbols': 1,
+                        // spot
+                        'spot/v1/time': 1,
+                        'spot/v1/symbols': 1,
+                        'spot/quote/v1/depth': 1,
+                        'spot/quote/v1/depth/merged': 1,
+                        'spot/quote/v1/trades': 1,
+                        'spot/quote/v1/kline': 1,
+                        'spot/quote/v1/ticker/24hr': 1,
+                        'spot/quote/v1/ticker/price': 1,
+                        'spot/quote/v1/ticker/book_ticker': 1,
+                        // data
+                        'v2/public/time': 1,
+                        'v2/public/announcement': 1,
+                        // USDC endpoints are testnet only as of 2022 Jan 11 ----------
+                        // option USDC (testnet only)
+                        'option/usdc/openapi/public/v1/order-book': 1,
+                        'option/usdc/openapi/public/v1/symbols': 1,
+                        'option/usdc/openapi/public/v1/tick': 1,
+                        'option/usdc/openapi/public/v1/delivery-price': 1,
+                        'option/usdc/openapi/public/v1/query-trade-latest': 1,
+                        // perpetual swap USDC (testnet only)
+                        'perpetual/usdc/openapi/public/v1/order-book': 1,
+                        'perpetual/usdc/openapi/public/v1/symbols': 1,
+                        'perpetual/usdc/openapi/public/v1/tick': 1,
+                        'perpetual/usdc/openapi/public/v1/kline/list': 1,
+                        'perpetual/usdc/openapi/public/v1/mark-price-kline': 1,
+                        'perpetual/usdc/openapi/public/v1/index-price-kline': 1,
+                        'perpetual/usdc/openapi/public/v1/premium-index-kline': 1,
+                        'perpetual/usdc/openapi/public/v1/open-interest': 1,
+                        'perpetual/usdc/openapi/public/v1/big-deal': 1,
+                        'perpetual/usdc/openapi/public/v1/account-ratio': 1,
+                    },
+                    // outdated endpoints--------------------------------------
                     'linear': {
                         'get': [
                             'kline',
@@ -239,6 +300,150 @@ module.exports = class bybit extends Exchange {
                     },
                 },
                 'private': {
+                    'get': {
+                        // inverse swap
+                        'v2/private/order/list': 1,
+                        'v2/private/order': 1,
+                        'v2/private/stop-order/list': 1,
+                        'v2/private/stop-order': 1,
+                        'v2/private/position/list': 1,
+                        'v2/private/execution/list': 1,
+                        'v2/private/trade/closed-pnl/list': 1,
+                        'v2/public/risk-limit/list': 1,
+                        'v2/public/funding/prev-funding-rate': 1,
+                        'v2/private/funding/prev-funding': 1,
+                        'v2/private/funding/predicted-funding': 1,
+                        'v2/private/account/api-key': 1,
+                        'v2/private/account/lcp': 1,
+                        'v2/private/wallet/balance': 1,
+                        'v2/private/wallet/fund/records': 1,
+                        'v2/private/wallet/withdraw/list': 1,
+                        'v2/private/exchange-order/list': 1,
+                        // linear swap USDT
+                        'private/linear/order/list': 1,
+                        'private/linear/order/search': 1,
+                        'private/linear/stop-order/list': 1,
+                        'private/linear/stop-order/search': 1,
+                        'private/linear/position/list': 1,
+                        'private/linear/trade/execution/list': 1,
+                        'private/linear/trade/closed-pnl/list': 1,
+                        'public/linear/risk-limit': 1,
+                        'private/linear/funding/predicted-funding': 1,
+                        'private/linear/funding/prev-funding': 1,
+                        // inverse futures
+                        'futures/private/order/list': 1,
+                        'futures/private/order': 1,
+                        'futures/private/stop-order/list': 1,
+                        'futures/private/stop-order': 1,
+                        'futures/private/position/list': 1,
+                        'futures/private/execution/list': 1,
+                        'futures/private/trade/closed-pnl/list': 1,
+                        // spot
+                        'spot/v1/account': 1,
+                        'spot/v1/order': 1,
+                        'spot/v1/open-orders': 1,
+                        'spot/v1/history-orders': 1,
+                        'spot/v1/myTrades': 1,
+                        // account
+                        'asset/v1/private/transfer/list': 1,
+                        'asset/v1/private/sub-member/transfer/list': 1,
+                        'asset/v1/private/sub-member/member-ids': 1,
+                    },
+                    'post': {
+                        // inverse swap
+                        'v2/private/order/create': 1,
+                        'v2/private/order/cancel': 1,
+                        'v2/private/order/cancelAll': 1,
+                        'v2/private/order/replace': 1,
+                        'v2/private/stop-order/create': 1,
+                        'v2/private/stop-order/cancel': 1,
+                        'v2/private/stop-order/cancelAll': 1,
+                        'v2/private/stop-order/replace': 1,
+                        'v2/private/position/change-position-margin': 1,
+                        'v2/private/position/trading-stop': 1,
+                        'v2/private/position/leverage/save': 1,
+                        'v2/private/tpsl/switch-mode': 1,
+                        'v2/private/position/switch-isolated': 1,
+                        'v2/private/position/risk-limit': 1,
+                        'v2/private/position/switch-mode': 1,
+                        // linear swap USDT
+                        'private/linear/order/create': 1,
+                        'private/linear/order/cancel': 1,
+                        'private/linear/order/cancel-all': 1,
+                        'private/linear/order/replace': 1,
+                        'private/linear/stop-order/create': 1,
+                        'private/linear/stop-order/cancel': 1,
+                        'private/linear/stop-order/cancel-all': 1,
+                        'private/linear/stop-order/replace': 1,
+                        'private/linear/position/set-auto-add-margin': 1,
+                        'private/linear/position/switch-isolated': 1,
+                        'private/linear/position/switch-mode': 1,
+                        'private/linear/tpsl/switch-mode': 1,
+                        'private/linear/position/add-margin': 1,
+                        'private/linear/position/set-leverage': 1,
+                        'private/linear/position/trading-stop': 1,
+                        'private/linear/position/set-risk': 1,
+                        // inverse futures
+                        'futures/private/order/create': 1,
+                        'futures/private/order/cancel': 1,
+                        'futures/private/order/cancelAll': 1,
+                        'futures/private/order/replace': 1,
+                        'futures/private/stop-order/create': 1,
+                        'futures/private/stop-order/cancel': 1,
+                        'futures/private/stop-order/cancelAll': 1,
+                        'futures/private/stop-order/replace': 1,
+                        'futures/private/position/change-position-margin': 1,
+                        'futures/private/position/trading-stop': 1,
+                        'futures/private/position/leverage/save': 1,
+                        'futures/private/position/switch-mode': 1,
+                        'futures/private/tpsl/switch-mode': 1,
+                        'futures/private/position/switch-isolated': 1,
+                        'futures/private/position/risk-limit': 1,
+                        // spot
+                        'spot/v1/order': 1,
+                        // account
+                        'asset/v1/private/transfer': 1,
+                        'asset/v1/private/sub-member/transfer': 1,
+                        // USDC endpoints are testnet only as of 2022 Jan 11 ----------
+                        // option USDC (testnet only)
+                        'option/usdc/openapi/private/v1/place-order': 1,
+                        'option/usdc/openapi/private/v1/batch-place-order': 1,
+                        'option/usdc/openapi/private/v1/replace-order': 1,
+                        'option/usdc/openapi/private/v1/batch-replace-orders': 1,
+                        'option/usdc/openapi/private/v1/cancel-order': 1,
+                        'option/usdc/openapi/private/v1/batch-cancel-orders': 1,
+                        'option/usdc/openapi/private/v1/cancel-all': 1,
+                        'option/usdc/openapi/private/v1/query-active-orders': 1,
+                        'option/usdc/openapi/private/v1/query-order-history': 1,
+                        'option/usdc/openapi/private/v1/execution-list': 1,
+                        'option/usdc/openapi/private/v1/query-transaction-log': 1,
+                        'option/usdc/openapi/private/v1/query-wallet-balance': 1,
+                        'option/usdc/openapi/private/v1/query-asset-info': 1,
+                        'option/usdc/openapi/private/v1/query-margin-info': 1,
+                        'option/usdc/openapi/private/v1/query-position': 1,
+                        'option/usdc/openapi/private/v1/query-delivery-list': 1,
+                        'option/usdc/openapi/private/v1/query-position-exp-date': 1,
+                        'option/usdc/openapi/private/v1/mmp-modify': 1,
+                        'option/usdc/openapi/private/v1/mmp-reset': 1,
+                        // perpetual swap USDC (testnet only)
+                        'perpetual/usdc/openapi/private/v1/place-order': 1,
+                        'perpetual/usdc/openapi/private/v1/replace-order': 1,
+                        'perpetual/usdc/openapi/private/v1/cancel-order': 1,
+                        'perpetual/usdc/openapi/private/v1/cancel-all': 1,
+                        'perpetual/usdc/openapi/private/v1/position/leverage/save': 1,
+                        'option/usdc/openapi/private/v1/session-settlement': 1,
+                        'perpetual/usdc/openapi/public/v1/risk-limit/list': 1,
+                        'perpetual/usdc/openapi/private/v1/position/set-risk-limit': 1,
+                    },
+                    'delete': {
+                        // spot
+                        'spot/v1/order': 1,
+                        'spot/v1/order/fast': 1,
+                        'spot/order/batch-cancel': 1,
+                        'spot/order/batch-fast-cancel': 1,
+                        'spot/order/batch-cancel-by-ids': 1,
+                    },
+                    // outdated endpoints -------------------------------------
                     'linear': {
                         'get': [
                             'order/list',
@@ -262,6 +467,7 @@ module.exports = class bybit extends Exchange {
                             'stop-order/replace',
                             'position/set-auto-add-margin',
                             'position/switch-isolated',
+                            'position/switch-mode',
                             'tpsl/switch-mode',
                             'position/add-margin',
                             'position/set-leverage',
@@ -428,13 +634,6 @@ module.exports = class bybit extends Exchange {
 
     nonce () {
         return this.milliseconds () - this.options['timeDifference'];
-    }
-
-    async loadTimeDifference (params = {}) {
-        const serverTime = await this.fetchTime (params);
-        const after = this.milliseconds ();
-        this.options['timeDifference'] = after - serverTime;
-        return this.options['timeDifference'];
     }
 
     async fetchTime (params = {}) {
@@ -778,7 +977,7 @@ module.exports = class bybit extends Exchange {
             this.safeNumber (ohlcv, 'high'),
             this.safeNumber (ohlcv, 'low'),
             this.safeNumber (ohlcv, 'close'),
-            this.safeNumber2 (ohlcv, 'turnover', 'volume'),
+            this.safeNumber2 (ohlcv, 'volume', 'turnover'),
         ];
     }
 
@@ -949,43 +1148,40 @@ module.exports = class bybit extends Exchange {
         //
         // fetchTrades (public)
         //
-        //     {
-        //         id: 43785688,
-        //         symbol: 'BTCUSD',
-        //         price: 7786,
-        //         qty: 67,
-        //         side: 'Sell',
-        //         time: '2020-03-11T19:18:30.123Z'
-        //     }
+        //      {
+        //          "id": "44275042152",
+        //          "symbol": "AAVEUSDT",
+        //          "price": "256.35",
+        //          "qty": "0.1",
+        //          "side": "Buy",
+        //          "time": "2021-11-30T12:46:14.000Z",
+        //          "trade_time_ms": "1638276374312"
+        //      }
         //
         // fetchMyTrades, fetchOrderTrades (private)
         //
-        //     {
-        //         "closed_size": 0,
-        //         "cross_seq": 277136382,
-        //         "exec_fee": "0.0000001",
-        //         "exec_id": "256e5ef8-abfe-5772-971b-f944e15e0d68",
-        //         "exec_price": "8178.5",
-        //         "exec_qty": 1,
-        //         // the docs say the exec_time field is "abandoned" now
-        //         // the user should use "trade_time_ms"
-        //         "exec_time": "1571676941.70682",
-        //         "exec_type": "Trade", //Exec Type Enum
-        //         "exec_value": "0.00012227",
-        //         "fee_rate": "0.00075",
-        //         "last_liquidity_ind": "RemovedLiquidity", //Liquidity Enum
-        //         "leaves_qty": 0,
-        //         "nth_fill": 2,
-        //         "order_id": "7ad50cb1-9ad0-4f74-804b-d82a516e1029",
-        //         "order_link_id": "",
-        //         "order_price": "8178",
-        //         "order_qty": 1,
-        //         "order_type": "Market", //Order Type Enum
-        //         "side": "Buy", //Side Enum
-        //         "symbol": "BTCUSD", //Symbol Enum
-        //         "user_id": 1,
-        //         "trade_time_ms": 1577480599000
-        //     }
+        //      {
+        //          "order_id": "b020b4bc-6fe2-45b5-adbc-dd07794f9746",
+        //          "order_link_id": "",
+        //          "side": "Buy",
+        //          "symbol": "AAVEUSDT",
+        //          "exec_id": "09abe8f0-aea6-514e-942b-7da8cb935120",
+        //          "price": "269.3",
+        //          "order_price": "269.3",
+        //          "order_qty": "0.1",
+        //          "order_type": "Market",
+        //          "fee_rate": "0.00075",
+        //          "exec_price": "256.35",
+        //          "exec_type": "Trade",
+        //          "exec_qty": "0.1",
+        //          "exec_fee": "0.01922625",
+        //          "exec_value": "25.635",
+        //          "leaves_qty": "0",
+        //          "closed_size": "0",
+        //          "last_liquidity_ind": "RemovedLiquidity",
+        //          "trade_time": "1638276374",
+        //          "trade_time_ms": "1638276374312"
+        //      }
         //
         const id = this.safeString2 (trade, 'id', 'exec_id');
         const marketId = this.safeString (trade, 'symbol');
@@ -993,12 +1189,7 @@ module.exports = class bybit extends Exchange {
         const symbol = market['symbol'];
         const amountString = this.safeString2 (trade, 'qty', 'exec_qty');
         const priceString = this.safeString2 (trade, 'exec_price', 'price');
-        let cost = this.safeNumber (trade, 'exec_value');
-        const amount = this.parseNumber (amountString);
-        const price = this.parseNumber (priceString);
-        if (cost === undefined) {
-            cost = this.parseNumber (Precise.stringMul (priceString, amountString));
-        }
+        const costString = this.safeString (trade, 'exec_value');
         let timestamp = this.parse8601 (this.safeString (trade, 'time'));
         if (timestamp === undefined) {
             timestamp = this.safeInteger (trade, 'trade_time_ms');
@@ -1006,17 +1197,17 @@ module.exports = class bybit extends Exchange {
         const side = this.safeStringLower (trade, 'side');
         const lastLiquidityInd = this.safeString (trade, 'last_liquidity_ind');
         const takerOrMaker = (lastLiquidityInd === 'AddedLiquidity') ? 'maker' : 'taker';
-        const feeCost = this.safeNumber (trade, 'exec_fee');
+        const feeCostString = this.safeString (trade, 'exec_fee');
         let fee = undefined;
-        if (feeCost !== undefined) {
+        if (feeCostString !== undefined) {
             const feeCurrencyCode = market['inverse'] ? market['base'] : market['quote'];
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrencyCode,
-                'rate': this.safeNumber (trade, 'fee_rate'),
+                'rate': this.safeString (trade, 'fee_rate'),
             };
         }
-        return {
+        return this.safeTrade ({
             'id': id,
             'info': trade,
             'timestamp': timestamp,
@@ -1026,11 +1217,11 @@ module.exports = class bybit extends Exchange {
             'type': this.safeStringLower (trade, 'order_type'),
             'side': side,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': costString,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchTrades (symbol, since = undefined, limit = undefined, params = {}) {
@@ -1121,7 +1312,27 @@ module.exports = class bybit extends Exchange {
         return this.parseOrderBook (result, symbol, timestamp, 'Buy', 'Sell', 'price', 'size');
     }
 
+    parseBalance (response) {
+        const result = {
+            'info': response,
+        };
+        const balances = this.safeValue (response, 'result', {});
+        const currencyIds = Object.keys (balances);
+        for (let i = 0; i < currencyIds.length; i++) {
+            const currencyId = currencyIds[i];
+            const balance = balances[currencyId];
+            const code = this.safeCurrencyCode (currencyId);
+            const account = this.account ();
+            account['free'] = this.safeString (balance, 'available_balance');
+            account['used'] = this.safeString (balance, 'used_margin');
+            account['total'] = this.safeString (balance, 'equity');
+            result[code] = account;
+        }
+        return this.safeBalance (result);
+    }
+
     async fetchBalance (params = {}) {
+        // note: any funds in the 'spot' account will not be returned or visible from this endpoint
         await this.loadMarkets ();
         const request = {};
         const coin = this.safeString (params, 'coin');
@@ -1162,22 +1373,7 @@ module.exports = class bybit extends Exchange {
         //         rate_limit: 120
         //     }
         //
-        const result = {
-            'info': response,
-        };
-        const balances = this.safeValue (response, 'result', {});
-        const currencyIds = Object.keys (balances);
-        for (let i = 0; i < currencyIds.length; i++) {
-            const currencyId = currencyIds[i];
-            const balance = balances[currencyId];
-            const code = this.safeCurrencyCode (currencyId);
-            const account = this.account ();
-            account['free'] = this.safeString (balance, 'available_balance');
-            account['used'] = this.safeString (balance, 'used_margin');
-            account['total'] = this.safeString (balance, 'equity');
-            result[code] = account;
-        }
-        return this.parseBalance (result);
+        return this.parseBalance (response);
     }
 
     parseOrderStatus (status) {
@@ -1330,12 +1526,11 @@ module.exports = class bybit extends Exchange {
         }
         const status = this.parseOrderStatus (this.safeString2 (order, 'order_status', 'stop_order_status'));
         const side = this.safeStringLower (order, 'side');
-        const feeCostString = this.safeString (order, 'cum_exec_fee');
-        const feeCost = this.parseNumber (Precise.stringAbs (feeCostString));
+        const feeCostString = Precise.stringAbs (this.safeString (order, 'cum_exec_fee'));
         let fee = undefined;
-        if (feeCost !== undefined) {
+        if (feeCostString !== undefined) {
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrency,
             };
         }
@@ -1346,7 +1541,7 @@ module.exports = class bybit extends Exchange {
         const timeInForce = this.parseTimeInForce (this.safeString (order, 'time_in_force'));
         const stopPrice = this.safeNumber2 (order, 'trigger_price', 'stop_px');
         const postOnly = (timeInForce === 'PO');
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1560,7 +1755,8 @@ module.exports = class bybit extends Exchange {
                 }
                 request['stop_px'] = parseFloat (this.priceToPrecision (symbol, stopPx));
                 request['base_price'] = parseFloat (this.priceToPrecision (symbol, basePrice));
-                params = this.omit (params, [ 'stop_px', 'stopPrice', 'base_price' ]);
+                request['trigger_by'] = 'LastPrice';
+                params = this.omit (params, [ 'stop_px', 'stopPrice', 'base_price', 'trigger_by' ]);
             }
         } else if (basePrice !== undefined) {
             throw new ArgumentsRequired (this.id + ' createOrder() requires both the stop_px and base_price params for a conditional ' + type + ' order');
@@ -2017,6 +2213,9 @@ module.exports = class bybit extends Exchange {
     }
 
     async fetchMyTrades (symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        if (symbol === undefined) {
+            throw new ArgumentsRequired (this.id + ' fetchMyTrades() requires a symbol argument');
+        }
         await this.loadMarkets ();
         const request = {
             // 'order_id': 'f185806b-b801-40ff-adec-52289370ed62', // if not provided will return user's trading records
@@ -2026,18 +2225,13 @@ module.exports = class bybit extends Exchange {
             // 'limit' 20, // max 50
         };
         let market = undefined;
-        if (symbol === undefined) {
-            const orderId = this.safeString (params, 'order_id');
-            if (orderId === undefined) {
-                throw new ArgumentsRequired (this.id + ' fetchMyTrades() requires a symbol argument or an order_id param');
-            } else {
-                request['order_id'] = orderId;
-                params = this.omit (params, 'order_id');
-            }
-        } else {
-            market = this.market (symbol);
-            request['symbol'] = market['id'];
+        const orderId = this.safeString (params, 'order_id');
+        if (orderId !== undefined) {
+            request['order_id'] = orderId;
+            params = this.omit (params, 'order_id');
         }
+        market = this.market (symbol);
+        request['symbol'] = market['id'];
         if (since !== undefined) {
             request['start_time'] = since;
         }
@@ -2328,6 +2522,7 @@ module.exports = class bybit extends Exchange {
             'txid': this.safeString (transaction, 'tx_id'),
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': undefined,
             'address': address,
             'addressTo': undefined,
             'addressFrom': undefined,
@@ -2499,81 +2694,6 @@ module.exports = class bybit extends Exchange {
         return this.safeValue (response, 'result');
     }
 
-    sign (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {
-        const type = this.safeString (api, 0);
-        let section = this.safeString (api, 1);
-        if (type === 'spot') {
-            if (section === 'public') {
-                section = 'v1';
-            } else {
-                section += '/v1';
-            }
-        }
-        let url = this.implodeHostname (this.urls['api'][type]);
-        let request = '/' + type + '/' + section + '/' + path;
-        if ((type === 'spot') || (type === 'quote')) {
-            if (Object.keys (params).length) {
-                request += '?' + this.rawencode (params);
-            }
-        } else if (section === 'public') {
-            if (Object.keys (params).length) {
-                request += '?' + this.rawencode (params);
-            }
-        } else if (type === 'public') {
-            if (Object.keys (params).length) {
-                request += '?' + this.rawencode (params);
-            }
-        } else {
-            this.checkRequiredCredentials ();
-            const timestamp = this.nonce ();
-            const query = this.extend (params, {
-                'api_key': this.apiKey,
-                'recv_window': this.options['recvWindow'],
-                'timestamp': timestamp,
-            });
-            const sortedQuery = this.keysort (query);
-            const auth = this.rawencode (sortedQuery);
-            const signature = this.hmac (this.encode (auth), this.encode (this.secret));
-            if (method === 'POST') {
-                body = this.json (this.extend (query, {
-                    'sign': signature,
-                }));
-                headers = {
-                    'Content-Type': 'application/json',
-                };
-            } else {
-                request += '?' + this.urlencode (sortedQuery) + '&sign=' + signature;
-            }
-        }
-        url += request;
-        return { 'url': url, 'method': method, 'body': body, 'headers': headers };
-    }
-
-    handleErrors (httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody) {
-        if (!response) {
-            return; // fallback to default error handler
-        }
-        //
-        //     {
-        //         ret_code: 10001,
-        //         ret_msg: 'ReadMapCB: expect { or n, but found \u0000, error ' +
-        //         'found in #0 byte of ...||..., bigger context ' +
-        //         '...||...',
-        //         ext_code: '',
-        //         ext_info: '',
-        //         result: null,
-        //         time_now: '1583934106.590436'
-        //     }
-        //
-        const errorCode = this.safeString (response, 'ret_code');
-        if (errorCode !== '0') {
-            const feedback = this.id + ' ' + body;
-            this.throwExactlyMatchedException (this.exceptions['exact'], errorCode, feedback);
-            this.throwBroadlyMatchedException (this.exceptions['broad'], body, feedback);
-            throw new ExchangeError (feedback); // unknown message
-        }
-    }
-
     async setMarginMode (marginType, symbol = undefined, params = {}) {
         //
         // {
@@ -2670,5 +2790,111 @@ module.exports = class bybit extends Exchange {
             request['sell_leverage'] = sell_leverage;
         }
         return await this[method] (this.extend (request, params));
+    }
+
+    sign (path, api = 'public', method = 'GET', params = {}, headers = undefined, body = undefined) {
+        let url = undefined;
+        if (Array.isArray (api)) {
+            const type = this.safeString (api, 0);
+            let section = this.safeString (api, 1);
+            if (type === 'spot') {
+                if (section === 'public') {
+                    section = 'v1';
+                } else {
+                    section += '/v1';
+                }
+            }
+            url = this.implodeHostname (this.urls['api'][type]);
+            let request = '/' + type + '/' + section + '/' + path;
+            if ((type === 'spot') || (type === 'quote')) {
+                if (Object.keys (params).length) {
+                    request += '?' + this.rawencode (params);
+                }
+            } else if (section === 'public') {
+                if (Object.keys (params).length) {
+                    request += '?' + this.rawencode (params);
+                }
+            } else if (type === 'public') {
+                if (Object.keys (params).length) {
+                    request += '?' + this.rawencode (params);
+                }
+            } else {
+                this.checkRequiredCredentials ();
+                const timestamp = this.nonce ();
+                const query = this.extend (params, {
+                    'api_key': this.apiKey,
+                    'recv_window': this.options['recvWindow'],
+                    'timestamp': timestamp,
+                });
+                const sortedQuery = this.keysort (query);
+                const auth = this.rawencode (sortedQuery);
+                const signature = this.hmac (this.encode (auth), this.encode (this.secret));
+                if (method === 'POST') {
+                    body = this.json (this.extend (query, {
+                        'sign': signature,
+                    }));
+                    headers = {
+                        'Content-Type': 'application/json',
+                    };
+                } else {
+                    request += '?' + this.urlencode (sortedQuery) + '&sign=' + signature;
+                }
+            }
+            url += request;
+        } else {
+            url = this.implodeHostname (this.urls['api'][api]) + '/' + path;
+            if (api === 'public') {
+                if (Object.keys (params).length) {
+                    url += '?' + this.rawencode (params);
+                }
+            } else if (api === 'private') {
+                this.checkRequiredCredentials ();
+                const timestamp = this.nonce ();
+                const query = this.extend (params, {
+                    'api_key': this.apiKey,
+                    'recv_window': this.options['recvWindow'],
+                    'timestamp': timestamp,
+                });
+                const sortedQuery = this.keysort (query);
+                const auth = this.rawencode (sortedQuery);
+                const signature = this.hmac (this.encode (auth), this.encode (this.secret));
+                if (method === 'POST') {
+                    body = this.json (this.extend (query, {
+                        'sign': signature,
+                    }));
+                    headers = {
+                        'Content-Type': 'application/json',
+                    };
+                } else {
+                    url += '?' + this.urlencode (sortedQuery) + '&sign=' + signature;
+                }
+            }
+        }
+        return { 'url': url, 'method': method, 'body': body, 'headers': headers };
+    }
+
+    handleErrors (httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody) {
+        if (!response) {
+            return; // fallback to default error handler
+        }
+        //
+        //     {
+        //         ret_code: 10001,
+        //         ret_msg: 'ReadMapCB: expect { or n, but found \u0000, error ' +
+        //         'found in #0 byte of ...||..., bigger context ' +
+        //         '...||...',
+        //         ext_code: '',
+        //         ext_info: '',
+        //         result: null,
+        //         time_now: '1583934106.590436'
+        //     }
+        //
+        const errorCode = this.safeString (response, 'ret_code');
+        if (errorCode !== '0') {
+            const feedback = this.id + ' ' + body;
+            this.throwExactlyMatchedException (this.exceptions['exact'], errorCode, feedback);
+            this.throwBroadlyMatchedException (this.exceptions['broad'], body, feedback);
+            throw new ExchangeError (feedback); // unknown message
+        }
     }
 };

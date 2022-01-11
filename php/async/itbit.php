@@ -409,9 +409,7 @@ class itbit extends Exchange {
         return $this->parse_trades($trades, $market, $since, $limit);
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->fetch_wallets($params);
+    public function parse_balance($response) {
         $balances = $response[0]['balances'];
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($balances); $i++) {
@@ -423,7 +421,13 @@ class itbit extends Exchange {
             $account['total'] = $this->safe_string($balance, 'totalBalance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->fetch_wallets($params);
+        return $this->parse_balance($response);
     }
 
     public function fetch_wallets($params = array ()) {
@@ -523,7 +527,7 @@ class itbit extends Exchange {
         $id = $this->safe_string($order, 'id');
         $postOnlyString = $this->safe_string($order, 'postOnly');
         $postOnly = ($postOnlyString === 'True');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => $clientOrderId,
             'info' => $order,

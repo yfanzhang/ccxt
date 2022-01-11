@@ -19,7 +19,6 @@ from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import InvalidNonce
 from ccxt.base.errors import RequestTimeout
 from ccxt.base.decimal_to_precision import TICK_SIZE
-from ccxt.base.precise import Precise
 
 
 class crex24(Exchange):
@@ -151,6 +150,7 @@ class crex24(Exchange):
                 'BULL': 'BuySell',
                 'CLC': 'CaluraCoin',
                 'CREDIT': 'TerraCredit',
+                'DMS': 'Documentchain',  # conflict with Dragon Mainland Shards
                 'EGG': 'NestEGG Coin',
                 'EPS': 'Epanus',  # conflict with EPS Ellipsis https://github.com/ccxt/ccxt/issues/8909
                 'FUND': 'FUNDChains',
@@ -385,8 +385,12 @@ class crex24(Exchange):
             withdrawalPrecision = self.safe_integer(currency, 'withdrawalPrecision')
             precision = math.pow(10, -withdrawalPrecision)
             address = self.safe_value(currency, 'BaseAddress')
-            active = (currency['depositsAllowed'] and currency['withdrawalsAllowed'] and not currency['isDelisted'])
-            type = 'fiat' if currency['isFiat'] else 'crypto'
+            deposit = self.safe_value(currency, 'depositsAllowed')
+            withdraw = self.safe_value(currency, 'withdrawalsAllowed')
+            delisted = self.safe_value(currency, 'isDelisted')
+            active = deposit and withdraw and not delisted
+            fiat = self.safe_value(currency, 'isFiat')
+            type = 'fiat' if fiat else 'crypto'
             result[code] = {
                 'id': id,
                 'code': code,
@@ -395,6 +399,8 @@ class crex24(Exchange):
                 'type': type,
                 'name': self.safe_string(currency, 'name'),
                 'active': active,
+                'deposit': deposit,
+                'withdraw': withdraw,
                 'fee': self.safe_number(currency, 'flatWithdrawalFee'),  # todo: redesign
                 'precision': precision,
                 'limits': {
@@ -454,6 +460,18 @@ class crex24(Exchange):
             'info': response,
         }
 
+    def parse_balance(self, response):
+        result = {'info': response}
+        for i in range(0, len(response)):
+            balance = response[i]
+            currencyId = self.safe_string(balance, 'currency')
+            code = self.safe_currency_code(currencyId)
+            account = self.account()
+            account['free'] = self.safe_string(balance, 'available')
+            account['used'] = self.safe_string(balance, 'reserved')
+            result[code] = account
+        return self.safe_balance(result)
+
     async def fetch_balance(self, params={}):
         await self.load_markets()
         request = {
@@ -470,16 +488,7 @@ class crex24(Exchange):
         #         }
         #     ]
         #
-        result = {'info': response}
-        for i in range(0, len(response)):
-            balance = response[i]
-            currencyId = self.safe_string(balance, 'currency')
-            code = self.safe_currency_code(currencyId)
-            account = self.account()
-            account['free'] = self.safe_string(balance, 'available')
-            account['used'] = self.safe_string(balance, 'reserved')
-            result[code] = account
-        return self.parse_balance(result)
+        return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
         await self.load_markets()
@@ -639,9 +648,6 @@ class crex24(Exchange):
         timestamp = self.parse8601(self.safe_string(trade, 'timestamp'))
         priceString = self.safe_string(trade, 'price')
         amountString = self.safe_string(trade, 'volume')
-        price = self.parse_number(priceString)
-        amount = self.parse_number(amountString)
-        cost = self.parse_number(Precise.string_mul(priceString, amountString))
         id = self.safe_string(trade, 'id')
         side = self.safe_string(trade, 'side')
         orderId = self.safe_string(trade, 'orderId')
@@ -650,14 +656,14 @@ class crex24(Exchange):
         fee = None
         feeCurrencyId = self.safe_string(trade, 'feeCurrency')
         feeCode = self.safe_currency_code(feeCurrencyId)
-        feeCost = self.safe_number(trade, 'fee')
-        if feeCost is not None:
+        feeCostString = self.safe_string(trade, 'fee')
+        if feeCostString is not None:
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCode,
             }
         takerOrMaker = None
-        return {
+        return self.safe_trade({
             'info': trade,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -667,11 +673,11 @@ class crex24(Exchange):
             'type': None,
             'takerOrMaker': takerOrMaker,
             'side': side,
-            'price': price,
-            'cost': cost,
-            'amount': amount,
+            'price': priceString,
+            'cost': None,
+            'amount': amountString,
             'fee': fee,
-        }
+        }, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
         await self.load_markets()
@@ -776,16 +782,13 @@ class crex24(Exchange):
         marketId = self.safe_string(order, 'instrument')
         symbol = self.safe_symbol(marketId, market, '-')
         timestamp = self.parse8601(self.safe_string(order, 'timestamp'))
-        price = self.safe_number(order, 'price')
-        amount = self.safe_number(order, 'volume')
-        remaining = self.safe_number(order, 'remainingVolume')
+        price = self.safe_string(order, 'price')
+        amount = self.safe_string(order, 'volume')
+        remaining = self.safe_string(order, 'remainingVolume')
         lastTradeTimestamp = self.parse8601(self.safe_string(order, 'lastUpdate'))
         id = self.safe_string(order, 'id')
         type = self.safe_string(order, 'type')
         side = self.safe_string(order, 'side')
-        fee = None
-        trades = None
-        average = None
         timeInForce = self.safe_string(order, 'timeInForce')
         stopPrice = self.safe_number(order, 'stopPrice')
         return self.safe_order({
@@ -803,13 +806,13 @@ class crex24(Exchange):
             'stopPrice': stopPrice,
             'amount': amount,
             'cost': None,
-            'average': average,
+            'average': None,
             'filled': None,
             'remaining': remaining,
             'status': status,
-            'fee': fee,
-            'trades': trades,
-        })
+            'fee': None,
+            'trades': None,
+        }, market)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
         await self.load_markets()
@@ -1092,6 +1095,41 @@ class crex24(Exchange):
         #
         return response
 
+    async def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
+        await self.load_markets()
+        request = {
+            'id': id,
+        }
+        response = await self.tradingGetOrderTrades(self.extend(request, params))
+        #
+        #     [
+        #         {
+        #             "id": 3005866,
+        #             "orderId": 468533093,
+        #             "timestamp": "2018-06-02T16:26:27Z",
+        #             "instrument": "BCH-ETH",
+        #             "side": "buy",
+        #             "price": 1.78882,
+        #             "volume": 0.027,
+        #             "fee": 0.0000483,
+        #             "feeCurrency": "ETH"
+        #         },
+        #         {
+        #             "id": 3005812,
+        #             "orderId": 468515771,
+        #             "timestamp": "2018-06-02T16:16:05Z",
+        #             "instrument": "ETC-BTC",
+        #             "side": "sell",
+        #             "price": 0.00210958,
+        #             "volume": 0.05994006,
+        #             "fee": -0.000000063224,
+        #             "feeCurrency": "BTC"
+        #         },
+        #         ...
+        #     ]
+        #
+        return self.parse_trades(response, None, since, limit)
+
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         await self.load_markets()
         market = None
@@ -1243,8 +1281,13 @@ class crex24(Exchange):
             'txid': txid,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
+            'network': None,
             'address': address,
+            'addressTo': None,
+            'addressFrom': None,
             'tag': tag,
+            'tagTo': None,
+            'tagFrom': None,
             'type': type,
             'amount': amount,
             'currency': code,

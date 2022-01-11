@@ -7,6 +7,7 @@ namespace ccxt\async;
 
 use Exception; // a common import
 use \ccxt\ExchangeError;
+use \ccxt\Precise;
 
 class btcbox extends Exchange {
 
@@ -77,9 +78,7 @@ class btcbox extends Exchange {
         ));
     }
 
-    public function fetch_balance($params = array ()) {
-        yield $this->load_markets();
-        $response = yield $this->privatePostBalance ($params);
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         $codes = is_array($this->currencies) ? array_keys($this->currencies) : array();
         for ($i = 0; $i < count($codes); $i++) {
@@ -95,7 +94,13 @@ class btcbox extends Exchange {
                 $result[$code] = $account;
             }
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        yield $this->load_markets();
+        $response = yield $this->privatePostBalance ($params);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -283,14 +288,14 @@ class btcbox extends Exchange {
         if ($datetimeString !== null) {
             $timestamp = $this->parse8601($order['datetime'] . '+09:00'); // Tokyo time
         }
-        $amount = $this->safe_number($order, 'amount_original');
-        $remaining = $this->safe_number($order, 'amount_outstanding');
-        $price = $this->safe_number($order, 'price');
+        $amount = $this->safe_string($order, 'amount_original');
+        $remaining = $this->safe_string($order, 'amount_outstanding');
+        $price = $this->safe_string($order, 'price');
         // $status is set by fetchOrder method only
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
         // fetchOrders do not return $status, use heuristic
         if ($status === null) {
-            if ($remaining !== null && $remaining === 0) {
+            if (Precise::string_equals($remaining, '0')) {
                 $status = 'closed';
             }
         }
@@ -322,7 +327,7 @@ class btcbox extends Exchange {
             'fee' => null,
             'info' => $order,
             'average' => null,
-        ));
+        ), $market);
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {

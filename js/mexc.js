@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 const Exchange = require ('./base/Exchange');
-const { InvalidAddress, ExchangeError, BadRequest, AuthenticationError, RateLimitExceeded, BadSymbol, InvalidOrder, InsufficientFunds, ArgumentsRequired, OrderNotFound, NotSupported, PermissionDenied } = require ('./base/errors');
+const { InvalidAddress, ExchangeError, BadRequest, AuthenticationError, RateLimitExceeded, BadSymbol, InvalidOrder, InsufficientFunds, ArgumentsRequired, OrderNotFound, PermissionDenied } = require ('./base/errors');
 const { TICK_SIZE } = require ('./base/functions/number');
 const Precise = require ('./base/Precise');
 
@@ -19,6 +19,12 @@ module.exports = class mexc extends Exchange {
             'version': 'v2',
             'certified': true,
             'has': {
+                'spot': true,
+                'margin': undefined,
+                'swap': true,
+                'future': undefined,
+                'option': undefined,
+                'addMargin': true,
                 'cancelAllOrders': true,
                 'cancelOrder': true,
                 'createMarketOrder': false,
@@ -28,22 +34,28 @@ module.exports = class mexc extends Exchange {
                 'fetchClosedOrders': true,
                 'fetchCurrencies': true,
                 'fetchDepositAddress': true,
-                'fetchDepositAddressByNetwork': true,
+                'fetchDepositAddressesByNetwork': true,
                 'fetchDeposits': true,
+                'fetchFundingRateHistory': true,
                 'fetchMarkets': true,
+                'fetchMarketsByType': true,
                 'fetchMyTrades': true,
                 'fetchOHLCV': true,
                 'fetchOpenOrders': true,
                 'fetchOrder': true,
                 'fetchOrderBook': true,
+                'fetchOrdersByState': true,
                 'fetchOrderTrades': true,
                 'fetchPosition': true,
                 'fetchPositions': true,
                 'fetchStatus': true,
                 'fetchTicker': true,
+                'fetchTickers': true,
                 'fetchTime': true,
                 'fetchTrades': true,
-                'fetchWIthdrawals': true,
+                'fetchWithdrawals': true,
+                'reduceMargin': true,
+                'setLeverage': true,
                 'withdraw': true,
             },
             'timeframes': {
@@ -53,6 +65,7 @@ module.exports = class mexc extends Exchange {
                 '30m': '30m',
                 '1h': '1h',
                 '1d': '1d',
+                '1w': '1w',
                 '1M': '1M',
             },
             'urls': {
@@ -223,6 +236,9 @@ module.exports = class mexc extends Exchange {
                 'COFI': 'COFIX', // conflict with CoinFi
                 'DFT': 'dFuture',
                 'DRK': 'DRK',
+                'FLUX1': 'FLUX', // switched places
+                'FLUX': 'FLUX1', // switched places
+                'FREE': 'FreeRossDAO', // conflict with FREE Coin
                 'HERO': 'Step Hero', // conflict with Metahero
                 'MIMO': 'Mimosa',
                 'PROS': 'Pros.Finance', // conflict with Prosper
@@ -334,7 +350,7 @@ module.exports = class mexc extends Exchange {
             const id = this.safeString (currency, 'currency');
             const code = this.safeCurrencyCode (id);
             const name = this.safeString (currency, 'full_name');
-            let currencyActive = undefined;
+            let currencyActive = false;
             let currencyPrecision = undefined;
             let currencyFee = undefined;
             let currencyWithdrawMin = undefined;
@@ -348,7 +364,7 @@ module.exports = class mexc extends Exchange {
                 const isDepositEnabled = this.safeValue (chain, 'is_deposit_enabled', false);
                 const isWithdrawEnabled = this.safeValue (chain, 'is_withdraw_enabled', false);
                 const active = (isDepositEnabled && isWithdrawEnabled);
-                currencyActive = (currencyActive === undefined) ? active : currencyActive;
+                currencyActive = active || currencyActive;
                 const precisionDigits = this.safeInteger (chain, 'precision');
                 const precision = 1 / Math.pow (10, precisionDigits);
                 const withdrawMin = this.safeString (chain, 'withdraw_limit_min');
@@ -483,42 +499,46 @@ module.exports = class mexc extends Exchange {
             const id = this.safeString (market, 'symbol');
             const baseId = this.safeString (market, 'baseCoin');
             const quoteId = this.safeString (market, 'quoteCoin');
+            const settleId = this.safeString (market, 'settleCoin');
             const base = this.safeCurrencyCode (baseId);
             const quote = this.safeCurrencyCode (quoteId);
-            const symbol = id;
-            const precision = {
-                'price': this.safeNumber (market, 'priceUnit'),
-                'amount': this.safeNumber (market, 'volUnit'),
-            };
-            const taker = this.safeNumber (market, 'takerFeeRate');
-            const maker = this.safeNumber (market, 'makerFeeRate');
+            const settle = this.safeCurrencyCode (settleId);
             const state = this.safeString (market, 'state');
-            const active = (state === '0');
-            const type = 'swap';
-            const swap = true;
-            const spot = false;
-            const contractSize = this.safeString (market, 'contractSize');
-            const linear = true;
-            const inverse = false;
-            result.push (this.extend (this.fees['trading'], {
-                'info': market,
+            result.push ({
                 'id': id,
-                'symbol': symbol,
+                'symbol': base + '/' + quote + ':' + settle,
                 'base': base,
                 'quote': quote,
+                'settle': settle,
                 'baseId': baseId,
                 'quoteId': quoteId,
-                'type': type,
-                'swap': swap,
-                'spot': spot,
-                'contractSize': contractSize,
-                'linear': linear,
-                'inverse': inverse,
-                'active': active,
-                'taker': taker,
-                'maker': maker,
-                'precision': precision,
+                'settleId': settleId,
+                'type': 'swap',
+                'spot': false,
+                'margin': false,
+                'swap': true,
+                'future': false,
+                'option': false,
+                'contract': true,
+                'linear': true,
+                'inverse': false,
+                'taker': this.safeNumber (market, 'takerFeeRate'),
+                'maker': this.safeNumber (market, 'makerFeeRate'),
+                'contractSize': this.safeNumber (market, 'contractSize'),
+                'active': (state === '0'),
+                'expiry': undefined,
+                'expiryDatetime': undefined,
+                'strike': undefined,
+                'optionType': undefined,
+                'precision': {
+                    'price': this.safeNumber (market, 'priceUnit'),
+                    'amount': this.safeNumber (market, 'volUnit'),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': this.safeNumber (market, 'minLeverage'),
+                        'max': this.safeNumber (market, 'maxLeverage'),
+                    },
                     'amount': {
                         'min': this.safeNumber (market, 'minVol'),
                         'max': this.safeNumber (market, 'maxVol'),
@@ -532,7 +552,8 @@ module.exports = class mexc extends Exchange {
                         'max': undefined,
                     },
                 },
-            }));
+                'info': market,
+            });
         }
         return result;
     }
@@ -575,33 +596,43 @@ module.exports = class mexc extends Exchange {
             const quantityScale = this.safeInteger (market, 'quantity_scale');
             const pricePrecision = 1 / Math.pow (10, priceScale);
             const quantityPrecision = 1 / Math.pow (10, quantityScale);
-            const precision = {
-                'price': pricePrecision,
-                'amount': quantityPrecision,
-            };
-            const taker = this.safeNumber (market, 'taker_fee_rate');
-            const maker = this.safeNumber (market, 'maker_fee_rate');
             const state = this.safeString (market, 'state');
-            const active = (state === 'ENABLED');
             const type = 'spot';
-            const swap = false;
-            const spot = true;
-            result.push (this.extend (this.fees['trading'], {
-                'info': market,
+            result.push ({
                 'id': id,
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': undefined,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': undefined,
                 'type': type,
-                'swap': swap,
-                'spot': spot,
-                'active': active,
-                'taker': taker,
-                'maker': maker,
-                'precision': precision,
+                'spot': true,
+                'margin': false,
+                'swap': false,
+                'future': false,
+                'option': false,
+                'active': (state === 'ENABLED'),
+                'contract': false,
+                'linear': undefined,
+                'inverse': undefined,
+                'taker': this.safeNumber (market, 'taker_fee_rate'),
+                'maker': this.safeNumber (market, 'maker_fee_rate'),
+                'contractSize': undefined,
+                'expiry': undefined,
+                'expiryDatetime': undefined,
+                'strike': undefined,
+                'optionType': undefined,
+                'precision': {
+                    'price': pricePrecision,
+                    'amount': quantityPrecision,
+                },
                 'limits': {
+                    'leverage': {
+                        'min': undefined,
+                        'max': undefined,
+                    },
                     'amount': {
                         'min': undefined,
                         'max': undefined,
@@ -615,7 +646,8 @@ module.exports = class mexc extends Exchange {
                         'max': this.safeNumber (market, 'max_amount'),
                     },
                 },
-            }));
+                'info': market,
+            });
         }
         return result;
     }
@@ -625,10 +657,11 @@ module.exports = class mexc extends Exchange {
         const defaultType = this.safeString2 (this.options, 'fetchTickers', 'defaultType', 'spot');
         const type = this.safeString (params, 'type', defaultType);
         const query = this.omit (params, 'type');
-        if (type !== 'swap') {
-            throw new NotSupported (this.id + ' fetchTickers() is supported for swap markets only');
+        let method = 'spotPublicGetMarketTicker';
+        if (type === 'swap') {
+            method = 'contractPublicGetTicker';
         }
-        const response = await this.contractPublicGetTicker (query);
+        const response = await this[method] (this.extend (query));
         //
         //     {
         //         "success":true,
@@ -1023,9 +1056,10 @@ module.exports = class mexc extends Exchange {
         const market = this.market (symbol);
         const options = this.safeValue (this.options, 'timeframes', {});
         const timeframes = this.safeValue (options, market['type'], {});
+        const timeframeValue = this.safeString (timeframes, timeframe, timeframe);
         const request = {
             'symbol': market['id'],
-            'interval': timeframes[timeframe],
+            'interval': timeframeValue,
         };
         let method = undefined;
         if (market['spot']) {
@@ -1172,7 +1206,7 @@ module.exports = class mexc extends Exchange {
                 result[code] = account;
             }
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
     }
 
     safeNetwork (networkId) {
@@ -1247,7 +1281,7 @@ module.exports = class mexc extends Exchange {
     }
 
     async fetchDepositAddress (code, params = {}) {
-        const rawNetwork = this.safeString (params, 'network');
+        const rawNetwork = this.safeStringUpper (params, 'network');
         params = this.omit (params, 'network');
         const response = await this.fetchDepositAddressesByNetwork (code, params);
         const networks = this.safeValue (this.options, 'networks', {});
@@ -1272,7 +1306,8 @@ module.exports = class mexc extends Exchange {
             }
             return result;
         }
-        result = this.safeValue (response, network);
+        // TODO: add support for all aliases here
+        result = this.safeValue (response, rawNetwork);
         if (result === undefined) {
             throw new InvalidAddress (this.id + ' fetchDepositAddress() cannot find ' + network + ' deposit address for ' + code);
         }
@@ -1418,7 +1453,7 @@ module.exports = class mexc extends Exchange {
         const updated = this.parse8601 (this.safeString (transaction, 'update_time'));
         let currencyId = this.safeString (transaction, 'currency');
         let network = undefined;
-        if (currencyId.indexOf ('-') >= 0) {
+        if ((currencyId !== undefined) && (currencyId.indexOf ('-') >= 0)) {
             const parts = currencyId.split ('-');
             currencyId = this.safeString (parts, 0);
             const networkId = this.safeString (parts, 1);
@@ -1443,12 +1478,16 @@ module.exports = class mexc extends Exchange {
             'txid': txid,
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
+            'network': network,
             'address': address,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': undefined,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'type': type,
             'amount': amount,
             'currency': code,
-            'network': network,
             'status': status,
             'updated': updated,
             'fee': fee,
@@ -1532,10 +1571,15 @@ module.exports = class mexc extends Exchange {
             orderSide = 'ASK';
         }
         let orderType = type.toUpperCase ();
-        if (orderType === 'LIMIT') {
+        const postOnly = this.safeValue (params, 'postOnly', false);
+        if (postOnly) {
+            orderType = 'POST_ONLY';
+        } else if (orderType === 'LIMIT') {
             orderType = 'LIMIT_ORDER';
         } else if ((orderType !== 'POST_ONLY') && (orderType !== 'IMMEDIATE_OR_CANCEL')) {
-            throw new InvalidOrder (this.id + ' createOrder does not support ' + type + ' order type, specify one of LIMIT, LIMIT_ORDER, POST_ONLY or IMMEDIATE_OR_CANCEL');
+            throw new InvalidOrder (this.id + ' createOrder() does not support ' + type + ' order type, specify one of LIMIT, LIMIT_ORDER, POST_ONLY or IMMEDIATE_OR_CANCEL');
+        } else {
+            throw new InvalidOrder (this.id + ' createOrder() allows limit orders only');
         }
         const request = {
             'symbol': market['id'],
@@ -1548,7 +1592,7 @@ module.exports = class mexc extends Exchange {
         if (clientOrderId !== undefined) {
             request['client_order_id'] = clientOrderId;
         }
-        params = this.omit (params, [ 'type', 'clientOrderId', 'client_order_id' ]);
+        params = this.omit (params, [ 'type', 'clientOrderId', 'client_order_id', 'postOnly' ]);
         const response = await this.spotPrivatePostOrderPlace (this.extend (request, params));
         //
         //     {"code":200,"data":"2ff3163e8617443cb9c6fc19d42b1ca4"}
@@ -1566,7 +1610,10 @@ module.exports = class mexc extends Exchange {
         if ((type !== 'limit') && (type !== 'market') && (type !== 1) && (type !== 2) && (type !== 3) && (type !== 4) && (type !== 5) && (type !== 6)) {
             throw new InvalidOrder (this.id + ' createSwapOrder() order type must either limit, market, or 1 for limit orders, 2 for post-only orders, 3 for IOC orders, 4 for FOK orders, 5 for market orders or 6 to convert market price to current price');
         }
-        if (type === 'limit') {
+        const postOnly = this.safeValue (params, 'postOnly', false);
+        if (postOnly) {
+            type = 2;
+        } else if (type === 'limit') {
             type = 1;
         } else if (type === 'market') {
             type = 6;
@@ -1607,7 +1654,7 @@ module.exports = class mexc extends Exchange {
         if (clientOrderId !== undefined) {
             request['externalOid'] = clientOrderId;
         }
-        params = this.omit (params, [ 'clientOrderId', 'externalOid' ]);
+        params = this.omit (params, [ 'clientOrderId', 'externalOid', 'postOnly' ]);
         const response = await this.contractPrivatePostOrderSubmit (this.extend (request, params));
         //
         //     {"code":200,"data":"2ff3163e8617443cb9c6fc19d42b1ca4"}
@@ -1725,7 +1772,7 @@ module.exports = class mexc extends Exchange {
         if (orderType !== undefined) {
             orderType = orderType.replace ('_order', '');
         }
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'id': id,
             'clientOrderId': clientOrderId,
             'timestamp': timestamp,
@@ -2093,5 +2140,72 @@ module.exports = class mexc extends Exchange {
             this.throwExactlyMatchedException (this.exceptions['exact'], responseCode, feedback);
             throw new ExchangeError (feedback);
         }
+    }
+
+    async fetchFundingRateHistory (symbol = undefined, since = undefined, limit = undefined, params = {}) {
+        //
+        // Gets a history of funding rates with their timestamps
+        //  (param) symbol: Future currency pair
+        //  (param) limit: mexc limit is page_size default 20, maximum is 100
+        //  (param) since: not used by mexc
+        //  (param) params: Object containing more params for the request
+        //  return: [{symbol, fundingRate, timestamp, dateTime}]
+        //
+        if (symbol === undefined) {
+            throw new ArgumentsRequired (this.id + ' fetchFundingRateHistory() requires a symbol argument');
+        }
+        await this.loadMarkets ();
+        const market = this.market (symbol);
+        const request = {
+            'symbol': market['id'],
+            // 'page_size': limit, // optional
+            // 'page_num': 1, // optional, current page number, default is 1
+        };
+        if (limit !== undefined) {
+            request['page_size'] = limit;
+        }
+        const response = await this.contractPublicGetFundingRateHistory (this.extend (request, params));
+        //
+        // {
+        //     "success": true,
+        //     "code": 0,
+        //     "data": {
+        //         "pageSize": 2,
+        //         "totalCount": 21,
+        //         "totalPage": 11,
+        //         "currentPage": 1,
+        //         "resultList": [
+        //             {
+        //                 "symbol": "BTC_USDT",
+        //                 "fundingRate": 0.000266,
+        //                 "settleTime": 1609804800000
+        //             },
+        //             {
+        //                 "symbol": "BTC_USDT",
+        //                 "fundingRate": 0.00029,
+        //                 "settleTime": 1609776000000
+        //             }
+        //         ]
+        //     }
+        // }
+        //
+        const data = this.safeValue (response, 'data');
+        const result = this.safeValue (data, 'resultList');
+        const rates = [];
+        for (let i = 0; i < result.length; i++) {
+            const entry = result[i];
+            const marketId = this.safeString (entry, 'symbol');
+            const symbol = this.safeSymbol (marketId);
+            const timestamp = this.safeString (entry, 'settleTime');
+            rates.push ({
+                'info': entry,
+                'symbol': symbol,
+                'fundingRate': this.safeNumber (entry, 'fundingRate'),
+                'timestamp': timestamp,
+                'datetime': this.iso8601 (timestamp),
+            });
+        }
+        const sorted = this.sortBy (rates, 'timestamp');
+        return this.filterBySymbolSinceLimit (sorted, symbol, since, limit);
     }
 };

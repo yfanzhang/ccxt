@@ -284,9 +284,7 @@ class btcalpha extends Exchange {
         return $this->parse_ohlcvs($response, $market, $timeframe, $since, $limit);
     }
 
-    public function fetch_balance($params = array ()) {
-        $this->load_markets();
-        $response = $this->privateGetWallets ($params);
+    public function parse_balance($response) {
         $result = array( 'info' => $response );
         for ($i = 0; $i < count($response); $i++) {
             $balance = $response[$i];
@@ -297,7 +295,13 @@ class btcalpha extends Exchange {
             $account['total'] = $this->safe_string($balance, 'balance');
             $result[$code] = $account;
         }
-        return $this->parse_balance($result);
+        return $this->safe_balance($result);
+    }
+
+    public function fetch_balance($params = array ()) {
+        $this->load_markets();
+        $response = $this->privateGetWallets ($params);
+        return $this->parse_balance($response);
     }
 
     public function parse_order_status($status) {
@@ -356,7 +360,7 @@ class btcalpha extends Exchange {
         $id = $this->safe_string_2($order, 'oid', 'id');
         $trades = $this->safe_value($order, 'trades');
         $side = $this->safe_string_2($order, 'my_side', 'type');
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'clientOrderId' => null,
             'datetime' => $this->iso8601($timestamp),

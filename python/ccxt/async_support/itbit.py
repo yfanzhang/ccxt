@@ -382,9 +382,7 @@ class itbit(Exchange):
         trades = self.safe_value(response, 'recentTrades', [])
         return self.parse_trades(trades, market, since, limit)
 
-    async def fetch_balance(self, params={}):
-        await self.load_markets()
-        response = await self.fetch_wallets(params)
+    def parse_balance(self, response):
         balances = response[0]['balances']
         result = {'info': response}
         for i in range(0, len(balances)):
@@ -395,7 +393,12 @@ class itbit(Exchange):
             account['free'] = self.safe_string(balance, 'availableBalance')
             account['total'] = self.safe_string(balance, 'totalBalance')
             result[code] = account
-        return self.parse_balance(result)
+        return self.safe_balance(result)
+
+    async def fetch_balance(self, params={}):
+        await self.load_markets()
+        response = await self.fetch_wallets(params)
+        return self.parse_balance(response)
 
     async def fetch_wallets(self, params={}):
         await self.load_markets()
@@ -485,7 +488,7 @@ class itbit(Exchange):
         id = self.safe_string(order, 'id')
         postOnlyString = self.safe_string(order, 'postOnly')
         postOnly = (postOnlyString == 'True')
-        return self.safe_order2({
+        return self.safe_order({
             'id': id,
             'clientOrderId': clientOrderId,
             'info': order,

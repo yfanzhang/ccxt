@@ -284,6 +284,28 @@ class tidex extends Exchange {
         return $result;
     }
 
+    public function parse_balance($response) {
+        $balances = $this->safe_value($response, 'return');
+        $timestamp = $this->safe_timestamp($balances, 'server_time');
+        $result = array(
+            'info' => $response,
+            'timestamp' => $timestamp,
+            'datetime' => $this->iso8601($timestamp),
+        );
+        $funds = $this->safe_value($balances, 'funds', array());
+        $currencyIds = is_array($funds) ? array_keys($funds) : array();
+        for ($i = 0; $i < count($currencyIds); $i++) {
+            $currencyId = $currencyIds[$i];
+            $code = $this->safe_currency_code($currencyId);
+            $balance = $this->safe_value($funds, $currencyId, array());
+            $account = $this->account();
+            $account['free'] = $this->safe_string($balance, 'value');
+            $account['used'] = $this->safe_string($balance, 'inOrders');
+            $result[$code] = $account;
+        }
+        return $this->safe_balance($result);
+    }
+
     public function fetch_balance($params = array ()) {
         yield $this->load_markets();
         $response = yield $this->privatePostGetInfoExt ($params);
@@ -313,25 +335,7 @@ class tidex extends Exchange {
         //         }
         //     }
         //
-        $balances = $this->safe_value($response, 'return');
-        $timestamp = $this->safe_timestamp($balances, 'server_time');
-        $result = array(
-            'info' => $response,
-            'timestamp' => $timestamp,
-            'datetime' => $this->iso8601($timestamp),
-        );
-        $funds = $this->safe_value($balances, 'funds', array());
-        $currencyIds = is_array($funds) ? array_keys($funds) : array();
-        for ($i = 0; $i < count($currencyIds); $i++) {
-            $currencyId = $currencyIds[$i];
-            $code = $this->safe_currency_code($currencyId);
-            $balance = $this->safe_value($funds, $currencyId, array());
-            $account = $this->account();
-            $account['free'] = $this->safe_string($balance, 'value');
-            $account['used'] = $this->safe_string($balance, 'inOrders');
-            $result[$code] = $account;
-        }
-        return $this->parse_balance($result);
+        return $this->parse_balance($response);
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
@@ -568,7 +572,7 @@ class tidex extends Exchange {
             $remainingString = $this->safe_string($returnResult, 'remains', $amountString);
         }
         $timestamp = $this->milliseconds();
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'id' => $id,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
@@ -625,7 +629,7 @@ class tidex extends Exchange {
             $remaining = $this->safe_string($order, 'amount');
         }
         $fee = null;
-        return $this->safe_order2(array(
+        return $this->safe_order(array(
             'info' => $order,
             'id' => $id,
             'clientOrderId' => null,

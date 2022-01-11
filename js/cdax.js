@@ -5,7 +5,6 @@
 const Exchange = require ('./base/Exchange');
 const { AuthenticationError, ExchangeError, PermissionDenied, ExchangeNotAvailable, OnMaintenance, InvalidOrder, OrderNotFound, InsufficientFunds, ArgumentsRequired, BadSymbol, BadRequest, RequestTimeout, NetworkError } = require ('./base/errors');
 const { TRUNCATE } = require ('./base/functions/number');
-const Precise = require ('./base/Precise');
 
 // ---------------------------------------------------------------------------
 
@@ -31,7 +30,7 @@ module.exports = class cdax extends Exchange {
                 'createOrder': true,
                 'fetchBalance': true,
                 'fetchClosedOrders': true,
-                'fetchCurrencies': false,
+                'fetchCurrencies': true,
                 'fetchDepositAddress': false,
                 'fetchDepositAddressesByNetwork': false,
                 'fetchDeposits': true,
@@ -567,34 +566,56 @@ module.exports = class cdax extends Exchange {
         //
         // fetchTrades (public)
         //
-        //     {
-        //         "amount": 0.010411000000000000,
-        //         "trade-id": 102090736910,
-        //         "ts": 1583497692182,
-        //         "id": 10500517034273194594947,
-        //         "price": 9096.050000000000000000,
-        //         "direction": "sell"
-        //     }
+        //      {
+        //          "id": "112522757755423628681413936",
+        //          "ts": "1638457111917",
+        //          "trade-id": "100454385963",
+        //          "amount": "13.7962",
+        //          "price": "1.697867",
+        //          "direction": "buy"
+        //      }
         //
         // fetchMyTrades (private)
         //
-        //     {
-        //          'symbol': 'swftcbtc',
-        //          'fee-currency': 'swftc',
-        //          'filled-fees': '0',
-        //          'source': 'spot-api',
-        //          'id': 83789509854000,
-        //          'type': 'buy-limit',
-        //          'order-id': 83711103204909,
-        //          'filled-points': '0.005826843283532154',
-        //          'fee-deduct-currency': 'ht',
-        //          'filled-amount': '45941.53',
-        //          'price': '0.0000001401',
-        //          'created-at': 1597933260729,
-        //          'match-id': 100087455560,
-        //          'role': 'maker',
-        //          'trade-id': 100050305348
-        //     },
+        //      {
+        //          "symbol": "adausdt",
+        //          "fee-currency": "usdt",
+        //          "source": "spot-api",
+        //          "order-id": "423628498050504",
+        //          "created-at": "1638455779233",
+        //          "role": "taker",
+        //          "price": "1.672487",
+        //          "match-id": "112521868633",
+        //          "trade-id": "100454375614",
+        //          "filled-amount": "6.8",
+        //          "filled-fees": "0.0227458232",
+        //          "filled-points": "0.0",
+        //          "fee-deduct-currency": "",
+        //          "fee-deduct-state": "done",
+        //          "id": "422419583501532",
+        //          "type": "sell-market"
+        //      },
+        //
+        // fetchOrderTrades (private)
+        //
+        //      {
+        //          "symbol": "adausdt",
+        //          "fee-currency": "usdt",
+        //          "source": "spot-api",
+        //          "match-id": "112521868633",
+        //          "trade-id": "100454375614",
+        //          "role": "taker",
+        //          "order-id": "423628498050504",
+        //          "price": "1.672487",
+        //          "created-at": "1638455779233",
+        //          "filled-amount": "6.8",
+        //          "filled-fees": "0.0227458232",
+        //          "filled-points": "0.0",
+        //          "fee-deduct-currency": "",
+        //          "fee-deduct-state": "done",
+        //          "id": "422419583501532",
+        //          "type": "sell-market"
+        //      }
         //
         const marketId = this.safeString (trade, 'symbol');
         const symbol = this.safeSymbol (marketId, market);
@@ -610,28 +631,25 @@ module.exports = class cdax extends Exchange {
         const takerOrMaker = this.safeString (trade, 'role');
         const priceString = this.safeString (trade, 'price');
         const amountString = this.safeString2 (trade, 'filled-amount', 'amount');
-        const price = this.parseNumber (priceString);
-        const amount = this.parseNumber (amountString);
-        const cost = this.parseNumber (Precise.stringMul (priceString, amountString));
         let fee = undefined;
-        let feeCost = this.safeNumber (trade, 'filled-fees');
+        let feeCostString = this.safeString (trade, 'filled-fees');
         let feeCurrency = this.safeCurrencyCode (this.safeString (trade, 'fee-currency'));
-        const filledPoints = this.safeNumber (trade, 'filled-points');
+        const filledPoints = this.safeString (trade, 'filled-points');
         if (filledPoints !== undefined) {
-            if ((feeCost === undefined) || (feeCost === 0.0)) {
-                feeCost = filledPoints;
+            if ((feeCostString === undefined) || (feeCostString === '0.0')) {
+                feeCostString = filledPoints;
                 feeCurrency = this.safeCurrencyCode (this.safeString (trade, 'fee-deduct-currency'));
             }
         }
-        if (feeCost !== undefined) {
+        if (feeCostString !== undefined) {
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrency,
             };
         }
         const tradeId = this.safeString2 (trade, 'trade-id', 'tradeId');
         const id = this.safeString (trade, 'id', tradeId);
-        return {
+        return this.safeTrade ({
             'id': id,
             'info': trade,
             'order': order,
@@ -641,11 +659,11 @@ module.exports = class cdax extends Exchange {
             'type': type,
             'side': side,
             'takerOrMaker': takerOrMaker,
-            'price': price,
-            'amount': amount,
-            'cost': cost,
+            'price': priceString,
+            'amount': amountString,
+            'cost': undefined,
             'fee': fee,
-        };
+        }, market);
     }
 
     async fetchOrderTrades (id, symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -780,125 +798,98 @@ module.exports = class cdax extends Exchange {
     }
 
     async fetchCurrencies (params = {}) {
-        const response = await this.v2PublicGetReferenceCurrencies ();
+        const request = {
+            'language': this.options['language'],
+        };
+        const response = await this.publicGetSettingsCurrencys (this.extend (request, params));
+        //
         //     {
-        //       "code": 200,
-        //       "data": [
-        //         {
-        //           "currency": "sxp",
-        //           "assetType": "1",
-        //           "chains": [
+        //         "status":"ok",
+        //         "data":[
         //             {
-        //               "chain": "sxp",
-        //               "displayName": "ERC20",
-        //               "baseChain": "ETH",
-        //               "baseChainProtocol": "ERC20",
-        //               "isDynamic": true,
-        //               "numOfConfirmations": "12",
-        //               "numOfFastConfirmations": "12",
-        //               "depositStatus": "allowed",
-        //               "minDepositAmt": "0.23",
-        //               "withdrawStatus": "allowed",
-        //               "minWithdrawAmt": "0.23",
-        //               "withdrawPrecision": "8",
-        //               "maxWithdrawAmt": "227000.000000000000000000",
-        //               "withdrawQuotaPerDay": "227000.000000000000000000",
-        //               "withdrawQuotaPerYear": null,
-        //               "withdrawQuotaTotal": null,
-        //               "withdrawFeeType": "fixed",
-        //               "transactFeeWithdraw": "11.1653",
-        //               "addrWithTag": false,
-        //               "addrDepositTag": false
+        //                 "currency-addr-with-tag":false,
+        //                 "fast-confirms":12,
+        //                 "safe-confirms":12,
+        //                 "currency-type":"eth",
+        //                 "quote-currency":true,
+        //                 "withdraw-enable-timestamp":1609430400000,
+        //                 "deposit-enable-timestamp":1609430400000,
+        //                 "currency-partition":"all",
+        //                 "support-sites":["OTC","INSTITUTION","MINEPOOL"],
+        //                 "withdraw-precision":6,
+        //                 "visible-assets-timestamp":1508839200000,
+        //                 "deposit-min-amount":"1",
+        //                 "withdraw-min-amount":"10",
+        //                 "show-precision":"8",
+        //                 "tags":"",
+        //                 "weight":23,
+        //                 "full-name":"Tether USDT",
+        //                 "otc-enable":1,
+        //                 "visible":true,
+        //                 "white-enabled":false,
+        //                 "country-disabled":false,
+        //                 "deposit-enabled":true,
+        //                 "withdraw-enabled":true,
+        //                 "name":"usdt",
+        //                 "state":"online",
+        //                 "display-name":"USDT",
+        //                 "suspend-withdraw-desc":null,
+        //                 "withdraw-desc":"Minimum withdrawal amount: 10 USDT (ERC20). !>_<!To ensure the safety of your funds, your withdrawal request will be manually reviewed if your security strategy or password is changed. Please wait for phone calls or emails from our staff.!>_<!Please make sure that your computer and browser are secure and your information is protected from being tampered or leaked.",
+        //                 "suspend-deposit-desc":null,
+        //                 "deposit-desc":"Please don’t deposit any other digital assets except USDT to the above address. Otherwise, you may lose your assets permanently. !>_<!Depositing to the above address requires confirmations of the entire network. It will arrive after 12 confirmations, and it will be available to withdraw after 12 confirmations. !>_<!Minimum deposit amount: 1 USDT. Any deposits less than the minimum will not be credited or refunded.!>_<!Your deposit address won’t change often. If there are any changes, we will notify you via announcement or email.!>_<!Please make sure that your computer and browser are secure and your information is protected from being tampered or leaked.",
+        //                 "suspend-visible-desc":null
         //             }
-        //           ],
-        //           "instStatus": "normal"
-        //         }
-        //       ]
+        //         ]
         //     }
         //
-        const data = this.safeValue (response, 'data', []);
+        const currencies = this.safeValue (response, 'data');
         const result = {};
-        for (let i = 0; i < data.length; i++) {
-            const entry = data[i];
-            const currencyId = this.safeString (entry, 'currency');
-            const code = this.safeCurrencyCode (currencyId);
-            const chains = this.safeValue (entry, 'chains', []);
-            const networks = {};
-            const instStatus = this.safeString (entry, 'instStatus');
-            const currencyActive = instStatus === 'normal';
-            let fee = undefined;
-            let precision = undefined;
-            let minWithdraw = undefined;
-            let maxWithdraw = undefined;
-            for (let j = 0; j < chains.length; j++) {
-                const chain = chains[j];
-                const networkId = this.safeString (chain, 'chain');
-                let baseChainProtocol = this.safeString (chain, 'baseChainProtocol');
-                const huobiToken = 'h' + currencyId;
-                if (baseChainProtocol === undefined) {
-                    if (huobiToken === networkId) {
-                        baseChainProtocol = 'ERC20';
-                    } else {
-                        baseChainProtocol = this.safeString (chain, 'displayName');
-                    }
-                }
-                const network = this.safeNetwork (baseChainProtocol);
-                minWithdraw = this.safeNumber (chain, 'minWithdrawAmt');
-                maxWithdraw = this.safeNumber (chain, 'maxWithdrawAmt');
-                const withdraw = this.safeString (chain, 'withdrawStatus');
-                const deposit = this.safeString (chain, 'depositStatus');
-                const active = (withdraw === 'allowed') && (deposit === 'allowed');
-                precision = this.safeInteger (chain, 'withdrawPrecision');
-                fee = this.safeNumber (chain, 'transactFeeWithdraw');
-                networks[network] = {
-                    'info': chain,
-                    'id': networkId,
-                    'network': network,
-                    'limits': {
-                        'withdraw': {
-                            'min': minWithdraw,
-                            'max': maxWithdraw,
-                        },
-                    },
-                    'active': active,
-                    'fee': fee,
-                    'precision': precision,
-                };
-            }
-            const networksKeys = Object.keys (networks);
-            const networkLength = networksKeys.length;
+        for (let i = 0; i < currencies.length; i++) {
+            const currency = currencies[i];
+            const id = this.safeValue (currency, 'name');
+            const precision = this.safeInteger (currency, 'withdraw-precision');
+            const code = this.safeCurrencyCode (id);
+            const depositEnabled = this.safeValue (currency, 'deposit-enabled');
+            const withdrawEnabled = this.safeValue (currency, 'withdraw-enabled');
+            const countryDisabled = this.safeValue (currency, 'country-disabled');
+            const visible = this.safeValue (currency, 'visible', false);
+            const state = this.safeString (currency, 'state');
+            const active = visible && depositEnabled && withdrawEnabled && (state === 'online') && !countryDisabled;
+            const name = this.safeString (currency, 'display-name');
             result[code] = {
-                'info': entry,
+                'id': id,
                 'code': code,
-                'id': currencyId,
-                'active': currencyActive,
-                'fee': (networkLength <= 1) ? fee : undefined,
-                'name': undefined,
+                'type': 'crypto',
+                // 'payin': currency['deposit-enabled'],
+                // 'payout': currency['withdraw-enabled'],
+                // 'transfer': undefined,
+                'name': name,
+                'active': active,
+                'deposit': depositEnabled,
+                'withdraw': withdrawEnabled,
+                'fee': undefined, // todo need to fetch from fee endpoint
+                'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': undefined,
-                        'max': undefined,
+                        'min': Math.pow (10, -precision),
+                        'max': Math.pow (10, precision),
+                    },
+                    'deposit': {
+                        'min': this.safeNumber (currency, 'deposit-min-amount'),
+                        'max': Math.pow (10, precision),
                     },
                     'withdraw': {
-                        'min': (networkLength <= 1) ? minWithdraw : undefined,
-                        'max': (networkLength <= 1) ? maxWithdraw : undefined,
+                        'min': this.safeNumber (currency, 'withdraw-min-amount'),
+                        'max': Math.pow (10, precision),
                     },
                 },
-                'precision': (networkLength <= 1) ? precision : undefined,
-                'networks': networks,
+                'info': currency,
             };
         }
         return result;
     }
 
-    async fetchBalance (params = {}) {
-        await this.loadMarkets ();
-        await this.loadAccounts ();
-        const method = this.options['fetchBalanceMethod'];
-        const request = {
-            'id': this.accounts[0]['id'],
-        };
-        const response = await this[method] (this.extend (request, params));
+    parseBalance (response) {
         const balances = this.safeValue (response['data'], 'list', []);
         const result = { 'info': response };
         for (let i = 0; i < balances.length; i++) {
@@ -919,7 +910,18 @@ module.exports = class cdax extends Exchange {
             }
             result[code] = account;
         }
-        return this.parseBalance (result);
+        return this.safeBalance (result);
+    }
+
+    async fetchBalance (params = {}) {
+        await this.loadMarkets ();
+        await this.loadAccounts ();
+        const method = this.options['fetchBalanceMethod'];
+        const request = {
+            'id': this.accounts[0]['id'],
+        };
+        const response = await this[method] (this.extend (request, params));
+        return this.parseBalance (response);
     }
 
     async fetchOrdersByStates (states, symbol = undefined, since = undefined, limit = undefined, params = {}) {
@@ -1083,35 +1085,38 @@ module.exports = class cdax extends Exchange {
         const id = this.safeString (order, 'id');
         let side = undefined;
         let type = undefined;
-        let status = undefined;
-        if ('type' in order) {
-            const orderType = order['type'].split ('-');
-            side = orderType[0];
-            type = orderType[1];
-            status = this.parseOrderStatus (this.safeString (order, 'state'));
+        const status = this.parseOrderStatus (this.safeString (order, 'state'));
+        const orderType = this.safeString (order, 'type');
+        if (orderType !== undefined) {
+            const parts = orderType.split ('-');
+            side = this.safeString (parts, 0);
+            type = this.safeString (parts, 1);
         }
         const marketId = this.safeString (order, 'symbol');
         market = this.safeMarket (marketId, market);
-        const symbol = this.safeSymbol (marketId, market);
+        const symbol = market['symbol'];
         const timestamp = this.safeInteger (order, 'created-at');
         const clientOrderId = this.safeString (order, 'client-order-id');
-        const amount = this.safeString (order, 'amount');
-        const filled = this.safeString2 (order, 'filled-amount', 'field-amount'); // typo in their API, filled amount
-        const price = this.safeString (order, 'price');
-        const cost = this.safeString2 (order, 'filled-cash-amount', 'field-cash-amount'); // same typo
-        const feeCost = this.safeNumber2 (order, 'filled-fees', 'field-fees'); // typo in their API, filled fees
+        const filledString = this.safeString2 (order, 'filled-amount', 'field-amount'); // typo in their API, filled amount
+        const priceString = this.safeString (order, 'price');
+        const costString = this.safeString2 (order, 'filled-cash-amount', 'field-cash-amount'); // same typo
+        let amountString = this.safeString (order, 'amount');
+        if (orderType === 'buy-market') {
+            amountString = undefined;
+        }
+        const feeCostString = this.safeString2 (order, 'filled-fees', 'field-fees'); // typo in their API, filled fees
         let fee = undefined;
-        if (feeCost !== undefined) {
+        if (feeCostString !== undefined) {
             let feeCurrency = undefined;
             if (market !== undefined) {
                 feeCurrency = (side === 'sell') ? market['quote'] : market['base'];
             }
             fee = {
-                'cost': feeCost,
+                'cost': feeCostString,
                 'currency': feeCurrency,
             };
         }
-        return this.safeOrder2 ({
+        return this.safeOrder ({
             'info': order,
             'id': id,
             'clientOrderId': clientOrderId,
@@ -1123,12 +1128,12 @@ module.exports = class cdax extends Exchange {
             'timeInForce': undefined,
             'postOnly': undefined,
             'side': side,
-            'price': price,
+            'price': priceString,
             'stopPrice': undefined,
             'average': undefined,
-            'cost': cost,
-            'amount': amount,
-            'filled': filled,
+            'cost': costString,
+            'amount': amountString,
+            'filled': filledString,
             'remaining': undefined,
             'status': status,
             'fee': fee,
@@ -1433,14 +1438,21 @@ module.exports = class cdax extends Exchange {
         if (feeCost !== undefined) {
             feeCost = Math.abs (feeCost);
         }
+        const address = this.safeString (transaction, 'address');
+        const network = this.safeStringUpper (transaction, 'chain');
         return {
             'info': transaction,
             'id': this.safeString (transaction, 'id'),
             'txid': this.safeString (transaction, 'tx-hash'),
             'timestamp': timestamp,
             'datetime': this.iso8601 (timestamp),
-            'address': this.safeString (transaction, 'address'),
+            'network': network,
+            'address': address,
+            'addressTo': undefined,
+            'addressFrom': undefined,
             'tag': tag,
+            'tagTo': undefined,
+            'tagFrom': undefined,
             'type': type,
             'amount': this.safeNumber (transaction, 'amount'),
             'currency': code,

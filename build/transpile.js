@@ -54,11 +54,12 @@ class Transpiler {
             [ /\.binaryConcatArray\s/g, '.binary_concat_array'],
             [ /\.binaryToString\s/g, '.binary_to_string' ],
             [ /\.precisionFromString\s/g, '.precision_from_string'],
+            [ /\.parsePrecision\s/g, '.parse_precision'],
             [ /\.implodeHostname\s/g, '.implode_hostname'],
             [ /\.implodeParams\s/g, '.implode_params'],
             [ /\.extractParams\s/g, '.extract_params'],
+            [ /\.safeBalance\s/g, '.safe_balance'],
             [ /\.parseBalance\s/g, '.parse_balance'],
-            [ /\.parseBalanceResponse\s/g, '.parse_balance_response'],
             [ /\.parseOHLCVs\s/g, '.parse_ohlcvs'],
             [ /\.parseOHLCV\s/g, '.parse_ohlcv'],
             [ /\.parseDate\s/g, '.parse_date'],
@@ -88,6 +89,7 @@ class Transpiler {
             [ /\.getVersionString\s/g, '.get_version_string'],
             [ /\.indexBy\s/g, '.index_by'],
             [ /\.sortBy\s/g, '.sort_by'],
+            [ /\.sortBy2\s/g, '.sort_by_2'],
             [ /\.filterBy\s/g, '.filter_by'],
             [ /\.groupBy\s/g, '.group_by'],
             [ /\.marketIds\s/g, '.market_ids'],
@@ -121,6 +123,7 @@ class Transpiler {
             [ /\.loadAccounts\s/g, '.load_accounts'],
             [ /\.loadFees\s/g, '.load_fees'],
             [ /\.loadMarkets\s/g, '.load_markets'],
+            [ /\.loadTimeDifference\s/g, '.load_time_difference'],
             [ /\.fetchMarkets\s/g, '.fetch_markets'],
             [ /\.appendInactiveMarkets\s/g, '.append_inactive_markets'],
             [ /\.fetchCategories\s/g, '.fetch_categories'],
@@ -146,22 +149,26 @@ class Transpiler {
             [ /\.safeMarket\s/g, '.safe_market'],
             [ /\.safeOrder\s/g, '.safe_order'],
             [ /\.safeTicker\s/g, '.safe_ticker'],
-            [ /\.roundTimeframe/g, '.round_timeframe'],
-            [ /\.calculateRateLimiterCost/g, '.calculate_rate_limiter_cost' ],
-            [ /\.parseAccountPosition/g, '.parse_account_position' ],
-            [ /\.parsePositionRisk/g, '.parse_position_risk' ],
-            [ /\.parseIncome/g, '.parse_income' ],
-            [ /\.parseIncomes/g, '.parse_incomes' ],
-            [ /\.parseFundingRate/g, '.parse_funding_rate' ],
-            [ /\.findBroadlyMatchedKey\s/g, '.find_broadly_matched_key'],
-            [ /\.throwBroadlyMatchedException\s/g, '.throw_broadly_matched_exception'],
-            [ /\.throwExactlyMatchedException\s/g, '.throw_exactly_matched_exception'],
+            [ /\.roundTimeframe\s/g, '.round_timeframe'],
+            [ /\.calculateRateLimiterCost\s/g, '.calculate_rate_limiter_cost' ],
+            [ /\.parseAccountPosition\s/g, '.parse_account_position' ],
+            [ /\.parsePositionRisk\s/g, '.parse_position_risk' ],
+            [ /\.parseIncome\s/g, '.parse_income' ],
+            [ /\.parseIncomes\s/g, '.parse_incomes' ],
+            [ /\.parseFundingRate\s/g, '.parse_funding_rate' ],
+            [ /\.findBroadlyMatchedKey\s/g, '.find_broadly_matched_key' ],
+            [ /\.throwBroadlyMatchedException\s/g, '.throw_broadly_matched_exception' ],
+            [ /\.throwExactlyMatchedException\s/g, '.throw_exactly_matched_exception' ],
+            [ /\.getNetwork\s/g, '.get_network' ],
             [ /\.findTimeframe\s/g, '.find_timeframe'],
             [ /errorHierarchy/g, 'error_hierarchy'],
             [ /\.base16ToBinary/g, '.base16_to_binary'],
             [ /\'use strict\';?\s+/g, '' ],
             [ /\.urlencodeWithArrayRepeat\s/g, '.urlencode_with_array_repeat' ],
-            [ /\.call\s*\(this, /g, '(' ]
+            [ /\.call\s*\(this, /g, '(' ],
+            [ /\.getSupportedMapping\s/g, '.get_supported_mapping'],
+            [ /\.fetchBorrowRate\s/g, '.fetch_borrow_rate'],
+            [ /\.handleMarketTypeAndParams\s/g, '.handle_market_type_and_params'],
         ]
     }
 
@@ -191,6 +198,13 @@ class Transpiler {
             [ /([^\s]+)\s+\!\=\=?\s+undefined/g, '$1 is not None' ],
             [ /(.+?)\s+\=\=\=?\s+undefined/g, '$1 is None' ],
             [ /(.+?)\s+\!\=\=?\s+undefined/g, '$1 is not None' ],
+            //
+            // too broad, have to rewrite these cause they don't work
+            //
+            // [ /([^\s]+)\s+\=\=\=?\s+true/g, 'isinstance($1, bool) and ($1 is True)' ],
+            // [ /([^\s]+)\s+\!\=\=?\s+true/g, 'isinstance($1, bool) and ($1 is not True)' ],
+            // [ /([^\s]+)\s+\=\=\=?\s+false/g, 'isinstance($1, bool) and ($1 is False)' ],
+            // [ /([^\s]+)\s+\!\=\=?\s+false/g, 'isinstance($1, bool) and ($1 is not False)' ],
 
             [ /typeof\s+([^\s\[]+)(?:\s|\[(.+?)\])\s+\=\=\=?\s+\'string\'/g, 'isinstance($1[$2], basestring)' ],
             [ /typeof\s+([^\s\[]+)(?:\s|\[(.+?)\])\s+\!\=\=?\s+\'string\'/g, 'not isinstance($1[$2], basestring)' ],
@@ -209,6 +223,7 @@ class Transpiler {
             [ /\.shift\s*\(\)/g, '.pop(0)' ],
             [ /Number\.MAX_SAFE_INTEGER/g, 'float(\'inf\')'],
             [ /function\s*(\w+\s*\([^)]+\))\s*{/g, 'def $1:'],
+            // [ /\.replaceAll\s*\(([^)]+)\)/g, '.replace($1)' ], // still not a part of the standard
             [ /assert\s*\((.+)\);/g, 'assert $1'],
             [ /Precise\.stringAdd\s/g, 'Precise.string_add' ],
             [ /Precise\.stringMul\s/g, 'Precise.string_mul' ],
@@ -439,6 +454,7 @@ class Transpiler {
             [ / \+\= (?!\d)/g, ' .= ' ],
             [ /([^\s\(]+(?:\s*\(.+\))?)\.toUpperCase\s*\(\)/g, 'strtoupper($1)' ],
             [ /([^\s\(]+(?:\s*\(.+\))?)\.toLowerCase\s*\(\)/g, 'strtolower($1)' ],
+            // [ /([^\s\(]+(?:\s*\(.+\))?)\.replaceAll\s*\(([^)]+)\)/g, 'str_replace($2, $1)' ], // still not a part of the standard in Node.js 13
             [ /([^\s\(]+(?:\s*\(.+\))?)\.replace\s*\(([^)]+)\)/g, 'str_replace($2, $1)' ],
             [ /this\[([^\]+]+)\]/g, '$$this->$$$1' ],
             [ /([^\s\(]+).slice \(([^\)\:,]+)\)/g, 'mb_substr($1, $2)' ],
@@ -611,6 +627,10 @@ class Transpiler {
             const regex = new RegExp ("[^\\'a-zA-Z]" + library + "[^\\'a-zA-Z]")
             if (bodyAsString.match (regex))
                 libraries.push ('import ' + pythonStandardLibraries[library])
+        }
+
+        if (body.indexOf ('numbers') >= 0) {
+            libraries.push ('import numbers')
         }
 
         const errorImports = []
@@ -1478,6 +1498,11 @@ class Transpiler {
                 'jsFile': './js/test/Exchange/test.order.js',
                 'pyFile': './python/ccxt/test/test_order.py',
                 'phpFile': './php/test/test_order.php',
+            },
+            {
+                'jsFile': './js/test/Exchange/test.position.js',
+                'pyFile': './python/ccxt/test/test_position.py',
+                'phpFile': './php/test/test_position.php',
             },
             {
                 'jsFile': './js/test/Exchange/test.transaction.js',
