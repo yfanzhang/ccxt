@@ -15,7 +15,7 @@ use \ccxt\NetworkError;
 class huobijp extends Exchange {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'huobijp',
             'name' => 'Huobi Japan',
             'countries' => array( 'JP' ),
@@ -28,18 +28,33 @@ class huobijp extends Exchange {
             'hostname' => 'api-cloud.huobi.co.jp',
             'pro' => true,
             'has' => array(
+                'CORS' => null,
+                'spot' => true,
+                'margin' => null,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
                 'cancelAllOrders' => true,
                 'cancelOrder' => true,
                 'cancelOrders' => true,
-                'CORS' => null,
                 'createOrder' => true,
+                'createStopLimitOrder' => false,
+                'createStopMarketOrder' => false,
+                'createStopOrder' => false,
+                'fetchAccounts' => true,
                 'fetchBalance' => true,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => false,
                 'fetchDepositAddressesByNetwork' => false,
                 'fetchDeposits' => true,
+                'fetchFundingHistory' => false,
+                'fetchFundingRate' => false,
+                'fetchFundingRateHistory' => false,
+                'fetchFundingRates' => false,
+                'fetchIndexOHLCV' => false,
                 'fetchMarkets' => true,
+                'fetchMarkOHLCV' => false,
                 'fetchMyTrades' => true,
                 'fetchOHLCV' => true,
                 'fetchOpenOrders' => true,
@@ -234,6 +249,7 @@ class huobijp extends Exchange {
                     'taker' => $this->parse_number('0.002'),
                 ),
             ),
+            'precisionMode' => TICK_SIZE,
             'exceptions' => array(
                 'broad' => array(
                     'contract is restricted of closing positions on API.  Please contact customer service' => '\\ccxt\\OnMaintenance',
@@ -267,7 +283,10 @@ class huobijp extends Exchange {
                     'system-maintenance' => '\\ccxt\\OnMaintenance', // array("status" => "error", "err-code" => "system-maintenance", "err-msg" => "System is in maintenance!", "data" => null)
                     // err-msg
                     'invalid symbol' => '\\ccxt\\BadSymbol', // array("ts":1568813334794,"status":"error","err-code":"invalid-parameter","err-msg":"invalid symbol")
-                    'symbol trade not open now' => '\\ccxt\\BadSymbol', // array("ts":1576210479343,"status":"error","err-code":"invalid-parameter","err-msg":"symbol trade not open now")
+                    'symbol trade not open now' => '\\ccxt\\BadSymbol', // array("ts":1576210479343,"status":"error","err-code":"invalid-parameter","err-msg":"symbol trade not open now"),
+                    'invalid-address' => '\\ccxt\\BadRequest', // array("status":"error","err-code":"invalid-address","err-msg":"Invalid address.","data":null),
+                    'base-currency-chain-error' => '\\ccxt\\BadRequest', // array("status":"error","err-code":"base-currency-chain-error","err-msg":"The current currency chain does not exist","data":null),
+                    'dw-insufficient-balance' => '\\ccxt\\InsufficientFunds', // array("status":"error","err-code":"dw-insufficient-balance","err-msg":"Insufficient balance. You can only transfer `12.3456` at most.","data":null)
                 ),
             ),
             'options' => array(
@@ -313,6 +332,11 @@ class huobijp extends Exchange {
     }
 
     public function fetch_time($params = array ()) {
+        /**
+         * fetches the current integer timestamp in milliseconds from the exchange server
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {int} the current integer timestamp in milliseconds from the exchange server
+         */
         $response = $this->publicGetCommonTimestamp ($params);
         return $this->safe_integer($response, 'data');
     }
@@ -389,63 +413,110 @@ class huobijp extends Exchange {
     }
 
     public function fetch_markets($params = array ()) {
+        /**
+         * retrieves data on all $markets for huobijp
+         * @param {array} $params extra parameters specific to the exchange api endpoint
+         * @return {[array]} an array of objects representing $market data
+         */
         $method = $this->options['fetchMarketsMethod'];
         $response = $this->$method ($params);
-        $markets = $this->safe_value($response, 'data');
-        $numMarkets = is_array($markets) ? count($markets) : 0;
+        //
+        //    {
+        //        "status" => "ok",
+        //        "data" => array(
+        //            {
+        //                "base-currency" => "xrp",
+        //                "quote-currency" => "btc",
+        //                "price-precision" => 9,
+        //                "amount-precision" => 2,
+        //                "symbol-partition" => "default",
+        //                "symbol" => "xrpbtc",
+        //                "state" => "online",
+        //                "value-precision" => 8,
+        //                "min-order-amt" => 1,
+        //                "max-order-amt" => 5000000,
+        //                "min-order-value" => 0.0001,
+        //                "limit-order-min-order-amt" => 1,
+        //                "limit-order-max-order-amt" => 5000000,
+        //                "limit-order-max-buy-amt" => 5000000,
+        //                "limit-order-max-sell-amt" => 5000000,
+        //                "sell-$market-min-order-amt" => 1,
+        //                "sell-$market-max-order-amt" => 500000,
+        //                "buy-$market-max-order-value" => 100,
+        //                "leverage-ratio" => 5,
+        //                "super-$margin-leverage-ratio" => 3,
+        //                "api-trading" => "enabled",
+        //                "tags" => ""
+        //            }
+        //            ...
+        //         )
+        //    }
+        //
+        $markets = $this->safe_value($response, 'data', array());
+        $numMarkets = count($markets);
         if ($numMarkets < 1) {
-            throw new NetworkError($this->id . ' publicGetCommonSymbols returned empty $response => ' . $this->json($markets));
+            throw new NetworkError($this->id . ' fetchMarkets() returned empty $response => ' . $this->json($markets));
         }
         $result = array();
         for ($i = 0; $i < count($markets); $i++) {
             $market = $markets[$i];
             $baseId = $this->safe_string($market, 'base-currency');
             $quoteId = $this->safe_string($market, 'quote-currency');
-            $id = $baseId . $quoteId;
             $base = $this->safe_currency_code($baseId);
             $quote = $this->safe_currency_code($quoteId);
-            $symbol = $base . '/' . $quote;
-            $precision = array(
-                'amount' => $this->safe_integer($market, 'amount-precision'),
-                'price' => $this->safe_integer($market, 'price-precision'),
-                'cost' => $this->safe_integer($market, 'value-precision'),
-            );
-            $maker = ($base === 'OMG') ? 0 : 0.2 / 100;
-            $taker = ($base === 'OMG') ? 0 : 0.2 / 100;
-            $minAmount = $this->safe_number($market, 'min-order-amt', pow(10, -$precision['amount']));
-            $maxAmount = $this->safe_number($market, 'max-order-amt');
-            $minCost = $this->safe_number($market, 'min-order-value', 0);
             $state = $this->safe_string($market, 'state');
-            $active = ($state === 'online');
+            $leverageRatio = $this->safe_string($market, 'leverage-ratio', '1');
+            $superLeverageRatio = $this->safe_string($market, 'super-$margin-leverage-ratio', '1');
+            $margin = Precise::string_gt($leverageRatio, '1') || Precise::string_gt($superLeverageRatio, '1');
+            $fee = ($base === 'OMG') ? 0 : 0.2 / 100;
             $result[] = array(
-                'id' => $id,
-                'symbol' => $symbol,
+                'id' => $baseId . $quoteId,
+                'symbol' => $base . '/' . $quote,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
+                'settleId' => null,
                 'type' => 'spot',
                 'spot' => true,
-                'active' => $active,
-                'precision' => $precision,
-                'taker' => $taker,
-                'maker' => $maker,
+                'margin' => $margin,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'active' => ($state === 'online'),
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
+                'taker' => $fee,
+                'maker' => $fee,
+                'contractSize' => null,
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'price' => $this->parse_number($this->parse_precision($this->safe_string($market, 'price-precision'))),
+                    'amount' => $this->parse_number($this->parse_precision($this->safe_string($market, 'amount-precision'))),
+                    'cost' => $this->parse_number($this->parse_precision($this->safe_string($market, 'value-precision'))),
+                ),
                 'limits' => array(
+                    'leverage' => array(
+                        'min' => $this->parse_number('1'),
+                        'max' => $this->parse_number($leverageRatio),
+                        'superMax' => $this->parse_number($superLeverageRatio),
+                    ),
                     'amount' => array(
-                        'min' => $minAmount,
-                        'max' => $maxAmount,
+                        'min' => $this->safe_number($market, 'min-order-amt'),
+                        'max' => $this->safe_number($market, 'max-order-amt'),
                     ),
                     'price' => array(
-                        'min' => pow(10, -$precision['price']),
+                        'min' => null,
                         'max' => null,
                     ),
                     'cost' => array(
-                        'min' => $minCost,
+                        'min' => $this->safe_number($market, 'min-order-value'),
                         'max' => null,
-                    ),
-                    'leverage' => array(
-                        'max' => $this->safe_number($market, 'leverage-ratio', 1),
-                        'superMax' => $this->safe_number($market, 'super-margin-leverage-ratio', 1),
                     ),
                 ),
                 'info' => $market,
@@ -495,39 +566,38 @@ class huobijp extends Exchange {
         $ask = null;
         $askVolume = null;
         if (is_array($ticker) && array_key_exists('bid', $ticker)) {
-            if (gettype($ticker['bid']) === 'array' && count(array_filter(array_keys($ticker['bid']), 'is_string')) == 0) {
-                $bid = $this->safe_number($ticker['bid'], 0);
-                $bidVolume = $this->safe_number($ticker['bid'], 1);
+            if (gettype($ticker['bid']) === 'array' && array_keys($ticker['bid']) === array_keys(array_keys($ticker['bid']))) {
+                $bid = $this->safe_string($ticker['bid'], 0);
+                $bidVolume = $this->safe_string($ticker['bid'], 1);
             } else {
-                $bid = $this->safe_number($ticker, 'bid');
-                $bidVolume = $this->safe_value($ticker, 'bidSize');
+                $bid = $this->safe_string($ticker, 'bid');
+                $bidVolume = $this->safe_string($ticker, 'bidSize');
             }
         }
         if (is_array($ticker) && array_key_exists('ask', $ticker)) {
-            if (gettype($ticker['ask']) === 'array' && count(array_filter(array_keys($ticker['ask']), 'is_string')) == 0) {
-                $ask = $this->safe_number($ticker['ask'], 0);
-                $askVolume = $this->safe_number($ticker['ask'], 1);
+            if (gettype($ticker['ask']) === 'array' && array_keys($ticker['ask']) === array_keys(array_keys($ticker['ask']))) {
+                $ask = $this->safe_string($ticker['ask'], 0);
+                $askVolume = $this->safe_string($ticker['ask'], 1);
             } else {
-                $ask = $this->safe_number($ticker, 'ask');
-                $askVolume = $this->safe_value($ticker, 'askSize');
+                $ask = $this->safe_string($ticker, 'ask');
+                $askVolume = $this->safe_string($ticker, 'askSize');
             }
         }
-        $open = $this->safe_number($ticker, 'open');
-        $close = $this->safe_number($ticker, 'close');
-        $baseVolume = $this->safe_number($ticker, 'amount');
-        $quoteVolume = $this->safe_number($ticker, 'vol');
-        $vwap = $this->vwap($baseVolume, $quoteVolume);
+        $open = $this->safe_string($ticker, 'open');
+        $close = $this->safe_string($ticker, 'close');
+        $baseVolume = $this->safe_string($ticker, 'amount');
+        $quoteVolume = $this->safe_string($ticker, 'vol');
         return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_number($ticker, 'high'),
-            'low' => $this->safe_number($ticker, 'low'),
+            'high' => $this->safe_string($ticker, 'high'),
+            'low' => $this->safe_string($ticker, 'low'),
             'bid' => $bid,
             'bidVolume' => $bidVolume,
             'ask' => $ask,
             'askVolume' => $askVolume,
-            'vwap' => $vwap,
+            'vwap' => null,
             'open' => $open,
             'close' => $close,
             'last' => $close,
@@ -542,6 +612,13 @@ class huobijp extends Exchange {
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
+        /**
+         * fetches information on open orders with bid (buy) and ask (sell) prices, volumes and other data
+         * @param {string} $symbol unified $symbol of the $market to fetch the order book for
+         * @param {int|null} $limit the maximum amount of order book entries to return
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} A dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#order-book-structure order book structures} indexed by $market symbols
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -584,6 +661,12 @@ class huobijp extends Exchange {
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
+        /**
+         * fetches a price $ticker, a statistical calculation with the information calculated over the past 24 hours for a specific $market
+         * @param {string} $symbol unified $symbol of the $market to fetch the $ticker for
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#$ticker-structure $ticker structure}
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -618,9 +701,16 @@ class huobijp extends Exchange {
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
+        /**
+         * fetches price $tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each $market
+         * @param {[string]|null} $symbols unified $symbols of the markets to fetch the $ticker for, all $market $tickers are returned if not assigned
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} an array of {@link https://docs.ccxt.com/en/latest/manual.html#$ticker-structure $ticker structures}
+         */
         $this->load_markets();
+        $symbols = $this->market_symbols($symbols);
         $response = $this->marketGetTickers ($params);
-        $tickers = $this->safe_value($response, 'data');
+        $tickers = $this->safe_value($response, 'data', array());
         $timestamp = $this->safe_integer($response, 'ts');
         $result = array();
         for ($i = 0; $i < count($tickers); $i++) {
@@ -721,6 +811,15 @@ class huobijp extends Exchange {
     }
 
     public function fetch_order_trades($id, $symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all the trades made from a single order
+         * @param {string} $id order $id
+         * @param {string|null} $symbol unified market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch trades for
+         * @param {int|null} $limit the maximum number of trades to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#trade-structure trade structures}
+         */
         $this->load_markets();
         $request = array(
             'id' => $id,
@@ -730,6 +829,14 @@ class huobijp extends Exchange {
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all trades made by the user
+         * @param {string|null} $symbol unified $market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch trades for
+         * @param {int|null} $limit the maximum number of trades structures to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#trade-structure trade structures}
+         */
         $this->load_markets();
         $market = null;
         $request = array();
@@ -749,6 +856,14 @@ class huobijp extends Exchange {
     }
 
     public function fetch_trades($symbol, $since = null, $limit = 1000, $params = array ()) {
+        /**
+         * get the list of most recent $trades for a particular $symbol
+         * @param {string} $symbol unified $symbol of the $market to fetch $trades for
+         * @param {int|null} $since timestamp in ms of the earliest $trade to fetch
+         * @param {int|null} $limit the maximum amount of $trades to fetch
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of ~@link https://docs.ccxt.com/en/latest/manual.html?#public-$trades $trade structures~
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -782,7 +897,7 @@ class huobijp extends Exchange {
         //         )
         //     }
         //
-        $data = $this->safe_value($response, 'data');
+        $data = $this->safe_value($response, 'data', array());
         $result = array();
         for ($i = 0; $i < count($data); $i++) {
             $trades = $this->safe_value($data[$i], 'data', array());
@@ -792,7 +907,7 @@ class huobijp extends Exchange {
             }
         }
         $result = $this->sort_by($result, 'timestamp');
-        return $this->filter_by_symbol_since_limit($result, $symbol, $since, $limit);
+        return $this->filter_by_symbol_since_limit($result, $market['symbol'], $since, $limit);
     }
 
     public function parse_ohlcv($ohlcv, $market = null) {
@@ -819,6 +934,15 @@ class huobijp extends Exchange {
     }
 
     public function fetch_ohlcv($symbol, $timeframe = '1m', $since = null, $limit = 1000, $params = array ()) {
+        /**
+         * fetches historical candlestick $data containing the open, high, low, and close price, and the volume of a $market
+         * @param {string} $symbol unified $symbol of the $market to fetch OHLCV $data for
+         * @param {string} $timeframe the length of time each candle represents
+         * @param {int|null} $since timestamp in ms of the earliest candle to fetch
+         * @param {int|null} $limit the maximum amount of candles to fetch
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[[int]]} A list of candles ordered as timestamp, open, high, low, close, volume
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -846,12 +970,22 @@ class huobijp extends Exchange {
     }
 
     public function fetch_accounts($params = array ()) {
+        /**
+         * fetch all the accounts associated with a profile
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} a dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#account-structure account structures} indexed by the account type
+         */
         $this->load_markets();
         $response = $this->privateGetAccountAccounts ($params);
         return $response['data'];
     }
 
     public function fetch_currencies($params = array ()) {
+        /**
+         * fetches all available $currencies on an exchange
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} an associative dictionary of $currencies
+         */
         $request = array(
             'language' => $this->options['language'],
         );
@@ -896,12 +1030,11 @@ class huobijp extends Exchange {
         //         ]
         //     }
         //
-        $currencies = $this->safe_value($response, 'data');
+        $currencies = $this->safe_value($response, 'data', array());
         $result = array();
         for ($i = 0; $i < count($currencies); $i++) {
             $currency = $currencies[$i];
             $id = $this->safe_value($currency, 'name');
-            $precision = $this->safe_integer($currency, 'withdraw-precision');
             $code = $this->safe_currency_code($id);
             $depositEnabled = $this->safe_value($currency, 'deposit-enabled');
             $withdrawEnabled = $this->safe_value($currency, 'withdraw-enabled');
@@ -910,6 +1043,7 @@ class huobijp extends Exchange {
             $state = $this->safe_string($currency, 'state');
             $active = $visible && $depositEnabled && $withdrawEnabled && ($state === 'online') && !$countryDisabled;
             $name = $this->safe_string($currency, 'display-name');
+            $precision = $this->parse_number($this->parse_precision($this->safe_string($currency, 'withdraw-precision')));
             $result[$code] = array(
                 'id' => $id,
                 'code' => $code,
@@ -919,20 +1053,22 @@ class huobijp extends Exchange {
                 // 'transfer' => null,
                 'name' => $name,
                 'active' => $active,
+                'deposit' => $depositEnabled,
+                'withdraw' => $withdrawEnabled,
                 'fee' => null, // todo need to fetch from fee endpoint
                 'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
-                        'min' => pow(10, -$precision),
-                        'max' => pow(10, $precision),
+                        'min' => $precision,
+                        'max' => null,
                     ),
                     'deposit' => array(
                         'min' => $this->safe_number($currency, 'deposit-min-amount'),
-                        'max' => pow(10, $precision),
+                        'max' => null,
                     ),
                     'withdraw' => array(
                         'min' => $this->safe_number($currency, 'withdraw-min-amount'),
-                        'max' => pow(10, $precision),
+                        'max' => null,
                     ),
                 ),
                 'info' => $currency,
@@ -966,6 +1102,11 @@ class huobijp extends Exchange {
     }
 
     public function fetch_balance($params = array ()) {
+        /**
+         * query for balance and get the amount of funds available for trading or funds locked in orders
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} a ~@link https://docs.ccxt.com/en/latest/manual.html?#balance-structure balance structure~
+         */
         $this->load_markets();
         $this->load_accounts();
         $method = $this->options['fetchBalanceMethod'];
@@ -1009,6 +1150,12 @@ class huobijp extends Exchange {
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
+        /**
+         * fetches information on an $order made by the user
+         * @param {string|null} $symbol unified $symbol of the market the $order was made in
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#$order-structure $order structure}
+         */
         $this->load_markets();
         $request = array(
             'id' => $id,
@@ -1019,10 +1166,26 @@ class huobijp extends Exchange {
     }
 
     public function fetch_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches information on multiple orders made by the user
+         * @param {string|null} $symbol unified market $symbol of the market orders were made in
+         * @param {int|null} $since the earliest time in ms to fetch orders for
+         * @param {int|null} $limit the maximum number of  orde structures to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         return $this->fetch_orders_by_states('pre-submitted,submitted,partial-filled,filled,partial-canceled,canceled', $symbol, $since, $limit, $params);
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all unfilled currently open orders
+         * @param {string|null} $symbol unified market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch open orders for
+         * @param {int|null} $limit the maximum number of  open orders structures to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $method = $this->safe_string($this->options, 'fetchOpenOrdersMethod', 'fetch_open_orders_v1');
         return $this->$method ($symbol, $since, $limit, $params);
     }
@@ -1035,6 +1198,14 @@ class huobijp extends Exchange {
     }
 
     public function fetch_closed_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches information on multiple closed orders made by the user
+         * @param {string|null} $symbol unified market $symbol of the market orders were made in
+         * @param {int|null} $since the earliest time in ms to fetch orders for
+         * @param {int|null} $limit the maximum number of  orde structures to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         return $this->fetch_orders_by_states('filled,partial-canceled,canceled', $symbol, $since, $limit, $params);
     }
 
@@ -1105,7 +1276,7 @@ class huobijp extends Exchange {
     public function parse_order($order, $market = null) {
         //
         //     {                  $id =>  13997833014,
-        //                    $symbol => "ethbtc",
+        //                    symbol => "ethbtc",
         //              'account-id' =>  3398321,
         //                    $amount => "0.045000000000000000",
         //                     $price => "0.034014000000000000",
@@ -1120,7 +1291,7 @@ class huobijp extends Exchange {
         //             'canceled-at' =>  0                      }
         //
         //     {                  $id =>  20395337822,
-        //                    $symbol => "ethbtc",
+        //                    symbol => "ethbtc",
         //              'account-id' =>  5685075,
         //                    $amount => "0.001000000000000000",
         //                     $price => "0.0",
@@ -1146,20 +1317,16 @@ class huobijp extends Exchange {
         }
         $marketId = $this->safe_string($order, 'symbol');
         $market = $this->safe_market($marketId, $market);
-        $symbol = $this->safe_symbol($marketId, $market);
         $timestamp = $this->safe_integer($order, 'created-at');
         $clientOrderId = $this->safe_string($order, 'client-$order-id');
         $amount = $this->safe_string($order, 'amount');
         $filled = $this->safe_string_2($order, 'filled-amount', 'field-amount'); // typo in their API, $filled $amount
         $price = $this->safe_string($order, 'price');
         $cost = $this->safe_string_2($order, 'filled-cash-amount', 'field-cash-amount'); // same typo
-        $feeCost = $this->safe_number_2($order, 'filled-fees', 'field-fees'); // typo in their API, $filled fees
+        $feeCost = $this->safe_string_2($order, 'filled-fees', 'field-fees'); // typo in their API, $filled fees
         $fee = null;
         if ($feeCost !== null) {
-            $feeCurrency = null;
-            if ($market !== null) {
-                $feeCurrency = ($side === 'sell') ? $market['quote'] : $market['base'];
-            }
+            $feeCurrency = ($side === 'sell') ? $market['quote'] : $market['base'];
             $fee = array(
                 'cost' => $feeCost,
                 'currency' => $feeCurrency,
@@ -1172,7 +1339,7 @@ class huobijp extends Exchange {
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
             'lastTradeTimestamp' => null,
-            'symbol' => $symbol,
+            'symbol' => $market['symbol'],
             'type' => $type,
             'timeInForce' => null,
             'postOnly' => null,
@@ -1191,6 +1358,16 @@ class huobijp extends Exchange {
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
+        /**
+         * create a trade order
+         * @param {string} $symbol unified $symbol of the $market to create an order in
+         * @param {string} $type 'market' or 'limit'
+         * @param {string} $side 'buy' or 'sell'
+         * @param {float} $amount how much of currency you want to trade in units of base currency
+         * @param {float|null} $price the $price at which the order is to be fullfilled, in units of the quote currency, ignored in $market orders
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} an {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
         $this->load_markets();
         $this->load_accounts();
         $market = $this->market($symbol);
@@ -1257,6 +1434,13 @@ class huobijp extends Exchange {
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
+        /**
+         * cancels an open order
+         * @param {string} $id order $id
+         * @param {string|null} $symbol not used by huobijp cancelOrder ()
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
         $response = $this->privatePostOrderOrdersIdSubmitcancel (array( 'id' => $id ));
         //
         //     {
@@ -1271,6 +1455,13 @@ class huobijp extends Exchange {
     }
 
     public function cancel_orders($ids, $symbol = null, $params = array ()) {
+        /**
+         * cancel multiple orders
+         * @param {[string]} $ids order $ids
+         * @param {string|null} $symbol not used by huobijp cancelOrders ()
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} an list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $this->load_markets();
         $clientOrderIds = $this->safe_value_2($params, 'clientOrderIds', 'client-order-ids');
         $params = $this->omit($params, array( 'clientOrderIds', 'client-order-ids' ));
@@ -1317,6 +1508,12 @@ class huobijp extends Exchange {
     }
 
     public function cancel_all_orders($symbol = null, $params = array ()) {
+        /**
+         * cancel all open orders
+         * @param {string|null} $symbol unified $market $symbol, only orders in the $market of this $symbol are cancelled when $symbol is not null
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $this->load_markets();
         $request = array(
             // 'account-id' string false NA The account id used for this cancel Refer to GET /v1/account/accounts
@@ -1344,8 +1541,8 @@ class huobijp extends Exchange {
         return $response;
     }
 
-    public function currency_to_precision($currency, $fee) {
-        return $this->decimal_to_precision($fee, 0, $this->currencies[$currency]['precision']);
+    public function currency_to_precision($code, $fee, $networkCode = null) {
+        return $this->decimal_to_precision($fee, 0, $this->currencies[$code]['precision'], $this->precisionMode);
     }
 
     public function safe_network($networkId) {
@@ -1369,9 +1566,6 @@ class huobijp extends Exchange {
         //
         $address = $this->safe_string($depositAddress, 'address');
         $tag = $this->safe_string($depositAddress, 'addressTag');
-        if ($tag === '') {
-            $tag = null;
-        }
         $currencyId = $this->safe_string($depositAddress, 'currency');
         $currency = $this->safe_currency($currencyId, $currency);
         $code = $this->safe_currency_code($currencyId, $currency);
@@ -1391,6 +1585,14 @@ class huobijp extends Exchange {
     }
 
     public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all deposits made to an account
+         * @param {string|null} $code unified $currency $code
+         * @param {int|null} $since the earliest time in ms to fetch deposits for
+         * @param {int|null} $limit the maximum number of deposits structures to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
         if ($limit === null || $limit > 100) {
             $limit = 100;
         }
@@ -1415,6 +1617,14 @@ class huobijp extends Exchange {
     }
 
     public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all withdrawals made from an account
+         * @param {string|null} $code unified $currency $code
+         * @param {int|null} $since the earliest time in ms to fetch withdrawals for
+         * @param {int|null} $limit the maximum number of withdrawals structures to retrieve
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
         if ($limit === null || $limit > 100) {
             $limit = 100;
         }
@@ -1474,6 +1684,13 @@ class huobijp extends Exchange {
         //         'updated-at' => 1552108032859
         //     }
         //
+        // withdraw
+        //
+        //     {
+        //         "status" => "ok",
+        //         "data" => "99562054"
+        //     }
+        //
         $timestamp = $this->safe_integer($transaction, 'created-at');
         $updated = $this->safe_integer($transaction, 'updated-at');
         $code = $this->safe_currency_code($this->safe_string($transaction, 'currency'));
@@ -1491,7 +1708,7 @@ class huobijp extends Exchange {
         $network = $this->safe_string_upper($transaction, 'chain');
         return array(
             'info' => $transaction,
-            'id' => $this->safe_string($transaction, 'id'),
+            'id' => $this->safe_string_2($transaction, 'id', 'data'),
             'txid' => $this->safe_string($transaction, 'tx-hash'),
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
@@ -1540,6 +1757,15 @@ class huobijp extends Exchange {
     }
 
     public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        /**
+         * make a withdrawal
+         * @param {string} $code unified $currency $code
+         * @param {float} $amount the $amount to withdraw
+         * @param {string} $address the $address to withdraw to
+         * @param {string|null} $tag
+         * @param {array} $params extra parameters specific to the huobijp api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structure}
+         */
         list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
         $this->load_markets();
         $this->check_address($address);
@@ -1565,20 +1791,22 @@ class huobijp extends Exchange {
             $params = $this->omit($params, 'network');
         }
         $response = $this->privatePostDwWithdrawApiCreate (array_merge($request, $params));
-        $id = $this->safe_string($response, 'data');
-        return array(
-            'info' => $response,
-            'id' => $id,
-        );
+        //
+        //     {
+        //         "status" => "ok",
+        //         "data" => "99562054"
+        //     }
+        //
+        return $this->parse_transaction($response, $currency);
     }
 
     public function sign($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {
         $url = '/';
         if ($api === 'market') {
             $url .= $api;
-        } else if (($api === 'public') || ($api === 'private')) {
+        } elseif (($api === 'public') || ($api === 'private')) {
             $url .= $this->version;
-        } else if (($api === 'v2Public') || ($api === 'v2Private')) {
+        } elseif (($api === 'v2Public') || ($api === 'v2Private')) {
             $url .= 'v2';
         }
         $url .= '/' . $this->implode_params($path, $params);
@@ -1622,10 +1850,6 @@ class huobijp extends Exchange {
             'hostname' => $this->hostname,
         )) . $url;
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );
-    }
-
-    public function calculate_rate_limiter_cost($api, $method, $path, $params, $config = array (), $context = array ()) {
-        return $this->safe_integer($config, 'cost', 1);
     }
 
     public function handle_errors($httpCode, $reason, $url, $method, $headers, $body, $response, $requestHeaders, $requestBody) {

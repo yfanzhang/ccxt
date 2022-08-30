@@ -7,17 +7,13 @@ namespace ccxt;
 // https://github.com/ccxt/ccxt/blob/master/CONTRIBUTING.md#how-to-contribute-code
 
 // -----------------------------------------------------------------------------
-// ----------------------------------------------------------------------------
-
-
-//  ---------------------------------------------------------------------------
 
 function test_ohlcv($exchange, $ohlcv, $symbol, $now) {
 
     $json = $exchange->json ($ohlcv);
     assert ($ohlcv);
-    assert (gettype($ohlcv) === 'array' && count(array_filter(array_keys($ohlcv), 'is_string')) == 0, $json);
-    $length = is_array($ohlcv) ? count($ohlcv) : 0;
+    assert (gettype($ohlcv) === 'array' && array_keys($ohlcv) === array_keys(array_keys($ohlcv)), $json);
+    $length = count($ohlcv);
     assert ($length >= 6);
     for ($i = 0; $i < count($ohlcv); $i++) {
         assert (($ohlcv[$i] === null) || ((is_float($ohlcv[$i]) || is_int($ohlcv[$i]))), $json);
@@ -30,6 +26,7 @@ function test_ohlcv($exchange, $ohlcv, $symbol, $now) {
         'bitmex', // BitMEX API docs => also note the open price is equal to the close price of the previous timeframe bucket.
         'vcc', // same as BitMEX, the open price is equal to the close price of the previous timeframe bucket.
         'delta',
+        'cryptocom',
     );
 
     if (!$exchange->in_array($exchange->id, $skippedExchanges)) {

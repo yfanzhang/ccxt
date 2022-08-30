@@ -10,7 +10,7 @@ use Exception; // a common import
 class binancecoinm extends binance {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'binancecoinm',
             'name' => 'Binance COIN-M',
             'urls' => array(
@@ -19,6 +19,15 @@ class binancecoinm extends binance {
                     'https://binance-docs.github.io/apidocs/delivery/en/',
                     'https://binance-docs.github.io/apidocs/spot/en',
                 ),
+            ),
+            'has' => array(
+                'CORS' => null,
+                'spot' => false,
+                'margin' => false,
+                'swap' => true,
+                'future' => true,
+                'option' => null,
+                'createStopMarketOrder' => true,
             ),
             'options' => array(
                 'defaultType' => 'delivery',

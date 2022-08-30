@@ -7,10 +7,13 @@ const csv = process.argv.includes ('--csv')
     , asTable = require ('as-table').configure (asTableConfig)
     , log = require ('ololog').noLocate
     , ansi = require ('ansicolor').nice
+    , sortCertified = process.argv.includes ('--sort-certified') || process.argv.includes ('--certified')
+    , exchangesArgument = process.argv.find (arg => arg.startsWith ('--exchanges='))
+    , exchangesArgumentParts = exchangesArgument ? exchangesArgument.split ('=') : []
+    , selectedExchanges = (exchangesArgumentParts.length > 1) ? exchangesArgumentParts[1].split (',') : []
 
 console.log (ccxt.iso8601 (ccxt.milliseconds ()))
 console.log ('CCXT v' + ccxt.version)
-const isWindows = process.platform == 'win32' // fix for windows, as it doesn't show darkred-VS-red well enough
 
 async function main () {
 
@@ -20,7 +23,25 @@ async function main () {
     let implemented = 0
     let emulated = 0
 
-    const exchanges = ccxt.exchanges.map (id => new ccxt[id] ())
+    const certified = [
+        'ascendex',
+        'binance',
+        'binancecoinm',
+        'binanceusdm',
+        'bitmart',
+        'bitvavo',
+        'currencycom',
+        'ftx',
+        'gateio',
+        'huobi',
+        'idex',
+        'mexc',
+        'okx',
+        'wavesexchange',
+        'zb',
+    ]
+    const exchangeNames = ccxt.unique (sortCertified ? certified.concat (ccxt.exchanges) : ccxt.exchanges);
+    let exchanges = exchangeNames.map (id => new ccxt[id] ())
     const metainfo = ccxt.flatten (exchanges.map (exchange => Object.keys (exchange.has)))
     const reduced = metainfo.reduce ((previous, current) => {
         previous[current] = (previous[current] || 0) + 1
@@ -28,16 +49,20 @@ async function main () {
     }, {})
     const unified = Object.entries (reduced).filter (([ _, count ]) => count > 1)
     const methods = unified.map (([ method, _ ]) => method).sort ()
+    if (selectedExchanges.length > 0) {
+        exchanges = exchanges.filter ((exchange) => selectedExchanges.includes(exchange.id))
+    }
     const table = asTable (exchanges.map (exchange => {
         let result = {};
         const basics = [
             'publicAPI',
             'privateAPI',
             'CORS',
+            'spot',
             'margin',
             'swap',
             'future',
-            'CORS',
+            'option',
         ];
 
         ccxt.unique (basics.concat (methods)).forEach (key => {
@@ -52,7 +77,7 @@ async function main () {
 
             if (feature === false) {
                 // if explicitly set to 'false' in exchange.has (to exclude mistake, we check if it's undefined too)
-                coloredString = isWindows ? exchange.id.lightMagenta : exchange.id.red
+                coloredString = exchange.id.red.dim
                 inexistentApi += 1
             } else if (feature === 'emulated') {
                 // if explicitly set to 'emulated' in exchange.has
@@ -70,11 +95,11 @@ async function main () {
                     } else {
                         // the feature is available in exchange.has and not implemented
                         // this is an error
-                        coloredString = exchange.id.red.bright
+                        coloredString = exchange.id.lightMagenta
                     }
                 }
             } else {
-                coloredString = isWindows ? exchange.id.red : exchange.id.red.dim
+                coloredString = exchange.id.lightRed
                 notImplemented += 1
             }
 
@@ -97,8 +122,8 @@ async function main () {
         'Methods [' + total.toString () + ' total]: ',
         implemented.toString ().green, 'implemented,',
         emulated.toString ().yellow, 'emulated,',
-        (isWindows ? inexistentApi.toString ().lightMagenta : inexistentApi.toString ().red), 'inexistentApi,',
-        (isWindows ? notImplemented.toString ().red : notImplemented.toString ().red.dim), 'notImplemented',
+        (inexistentApi.toString ().red.dim), 'inexistentApi,',
+        (notImplemented.toString ().lightRed), 'notImplemented',
     )
 
     log("\nMessy? Try piping to less (e.g. node script.js | less -S -R)\n".red)

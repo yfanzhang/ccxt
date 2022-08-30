@@ -16,10 +16,12 @@ declare module 'ccxt' {
     export class ExchangeError extends BaseError {}
     export class AuthenticationError extends ExchangeError {}
     export class PermissionDenied extends AuthenticationError {}
+    export class AccountNotEnabled extends PermissionDenied {}
     export class AccountSuspended extends AuthenticationError {}
     export class ArgumentsRequired extends ExchangeError {}
     export class BadRequest extends ExchangeError {}
     export class BadSymbol extends BadRequest {}
+    export class MarginModeAlreadySet extends BadRequest {}
     export class BadResponse extends ExchangeError {}
     export class NullResponse extends BadResponse {}
     export class InsufficientFunds extends ExchangeError {}
@@ -47,7 +49,7 @@ declare module 'ccxt' {
     export const exchanges: string[];
 
     export interface MinMax {
-        min: number;
+        min: number | undefined;
         max: number | undefined;
     }
 
@@ -58,19 +60,38 @@ declare module 'ccxt' {
         quote: string;
         baseId: string;
         quoteId: string;
+        active?: boolean | undefined;
         type?: string;
         spot?: boolean;
         margin?: boolean;
         swap?: boolean;
         future?: boolean;
         option?: boolean;
-        active: boolean;
-        precision: { base: number, quote: number, amount: number, price: number };
-        limits: { amount: MinMax, price: MinMax, cost?: MinMax };
-        tierBased: boolean;
-        percentage: boolean;
-        taker: number;
-        maker: number;
+        contract?: boolean;
+        settle?: string | undefined;
+        settleId?: string | undefined;
+        contractSize?: number | undefined;
+        linear?: boolean | undefined;
+        inverse?: boolean | undefined;
+        expiry?: number | undefined;
+        expiryDatetime?: string | undefined;
+        strike?: number | undefined;
+        optionType?: string | undefined;
+        taker?: number | undefined;
+        maker?: number | undefined;
+        percentage?: boolean | undefined;
+        tierBased?: boolean | undefined;
+        feeSide?: string | undefined;
+        precision: {
+            amount: number | undefined,
+            price: number | undefined
+        };
+        limits: {
+            amount?: MinMax,
+            cost?: MinMax,
+            leverage?: MinMax,
+            price?: MinMax,
+        };
         info: any;
     }
 
@@ -287,7 +308,7 @@ declare module 'ccxt' {
         countries: string[];
         // set by loadMarkets
         markets: Dictionary<Market>;
-        marketsById: Dictionary<Market>;
+        markets_by_id: Dictionary<Market>;
         currencies: Dictionary<Currency>;
         ids: string[];
         symbols: string[];
@@ -361,6 +382,8 @@ declare module 'ccxt' {
         createLimitBuyOrder (symbol: string, amount: number, price: number, params?: Params): Promise<Order>;
         createLimitSellOrder (symbol: string, amount: number, price: number, params?: Params): Promise<Order>;
         createMarketOrder (symbol: string, side: Order['side'], amount: number, price?: number, params?: Params): Promise<Order>;
+        createMarketBuyOrder (symbol: string, amount: number, params?: Params): Promise<Order>;
+        createMarketSellOrder (symbol: string, amount: number, params?: Params): Promise<Order>;
         createOrder (symbol: string, type: Order['type'], side: Order['side'], amount: number, price?: number, params?: Params): Promise<Order>;
         decode (str: string): string;
         defaults (): any;
@@ -426,6 +449,7 @@ declare module 'ccxt' {
     /* tslint:disable */
 
     export class aax extends Exchange {}
+    export class alpaca extends Exchange {}
     export class ascendex extends Exchange {}
     export class bequant extends hitbtc {}
     export class bibox extends Exchange {}
@@ -438,15 +462,16 @@ declare module 'ccxt' {
     export class bitbank extends Exchange {}
     export class bitbay extends zonda {}
     export class bitbns extends Exchange {}
-    export class bitcoincom extends hitbtc {}
+    export class bitcoincom extends fmfwio {}
     export class bitfinex extends Exchange {}
-    export class bitfinex2 extends bitfinex {}
+    export class bitfinex2 extends Exchange {}
     export class bitflyer extends Exchange {}
     export class bitforex extends Exchange {}
     export class bitget extends Exchange {}
     export class bithumb extends Exchange {}
     export class bitmart extends Exchange {}
     export class bitmex extends Exchange {}
+    export class bitopro extends Exchange {}
     export class bitpanda extends Exchange {}
     export class bitrue extends Exchange {}
     export class bitso extends Exchange {}
@@ -454,10 +479,12 @@ declare module 'ccxt' {
     export class bitstamp1 extends Exchange {}
     export class bittrex extends Exchange {}
     export class bitvavo extends Exchange {}
+    export class bkex extends Exchange {}
     export class bl3p extends Exchange {}
     export class blockchaincom extends Exchange {}
     export class btcalpha extends Exchange {}
     export class btcbox extends Exchange {}
+    export class btcex extends Exchange {}
     export class btcmarkets extends Exchange {}
     export class btctradeua extends Exchange {}
     export class btcturk extends Exchange {}
@@ -483,12 +510,13 @@ declare module 'ccxt' {
     export class deribit extends Exchange {}
     export class digifinex extends Exchange {}
     export class eqonex extends Exchange {}
-    export class equos extends eqonex {}
     export class exmo extends Exchange {}
-    export class flowbtc extends Exchange {}
+    export class flowbtc extends ndax {}
+    export class fmfwio extends hitbtc {}
     export class ftx extends Exchange {}
     export class ftxus extends ftx {}
-    export class gateio extends Exchange {}
+    export class gate extends Exchange {}
+    export class gateio extends gate {}
     export class gemini extends Exchange {}
     export class hitbtc extends Exchange {}
     export class hitbtc3 extends Exchange {}
@@ -505,20 +533,21 @@ declare module 'ccxt' {
     export class kucoinfutures extends kucoin {}
     export class kuna extends Exchange {}
     export class latoken extends Exchange {}
-    export class latoken1 extends Exchange {}
     export class lbank extends Exchange {}
+    export class lbank2 extends Exchange {}
     export class liquid extends Exchange {}
     export class luno extends Exchange {}
     export class lykke extends Exchange {}
     export class mercado extends Exchange {}
     export class mexc extends Exchange {}
+    export class mexc3 extends Exchange {}
     export class ndax extends Exchange {}
     export class novadax extends Exchange {}
     export class oceanex extends Exchange {}
-    export class okcoin extends okex3 {}
-    export class okex extends Exchange {}
-    export class okex3 extends Exchange {}
+    export class okcoin extends Exchange {}
+    export class okex extends okx {}
     export class okex5 extends okex {}
+    export class okx extends Exchange {}
     export class paymium extends Exchange {}
     export class phemex extends Exchange {}
     export class poloniex extends Exchange {}
@@ -530,11 +559,12 @@ declare module 'ccxt' {
     export class tidebit extends Exchange {}
     export class tidex extends Exchange {}
     export class timex extends Exchange {}
+    export class tokocrypto extends Exchange {}
     export class upbit extends Exchange {}
-    export class vcc extends Exchange {}
     export class wavesexchange extends Exchange {}
     export class wazirx extends Exchange {}
     export class whitebit extends Exchange {}
+    export class woo extends Exchange {}
     export class xena extends Exchange {}
     export class yobit extends Exchange {}
     export class zaif extends Exchange {}
@@ -546,6 +576,7 @@ declare module 'ccxt' {
 
     export type ExchangeId =
         | 'aax'
+        | 'alpaca'
         | 'ascendex'
         | 'bequant'
         | 'bibox'
@@ -567,6 +598,7 @@ declare module 'ccxt' {
         | 'bithumb'
         | 'bitmart'
         | 'bitmex'
+        | 'bitopro'
         | 'bitpanda'
         | 'bitrue'
         | 'bitso'
@@ -574,10 +606,12 @@ declare module 'ccxt' {
         | 'bitstamp1'
         | 'bittrex'
         | 'bitvavo'
+        | 'bkex'
         | 'bl3p'
         | 'blockchaincom'
         | 'btcalpha'
         | 'btcbox'
+        | 'btcex'
         | 'btcmarkets'
         | 'btctradeua'
         | 'btcturk'
@@ -603,11 +637,12 @@ declare module 'ccxt' {
         | 'deribit'
         | 'digifinex'
         | 'eqonex'
-        | 'equos'
         | 'exmo'
         | 'flowbtc'
+        | 'fmfwio'
         | 'ftx'
         | 'ftxus'
+        | 'gate'
         | 'gateio'
         | 'gemini'
         | 'hitbtc'
@@ -625,20 +660,21 @@ declare module 'ccxt' {
         | 'kucoinfutures'
         | 'kuna'
         | 'latoken'
-        | 'latoken1'
         | 'lbank'
+        | 'lbank2'
         | 'liquid'
         | 'luno'
         | 'lykke'
         | 'mercado'
         | 'mexc'
+        | 'mexc3'
         | 'ndax'
         | 'novadax'
         | 'oceanex'
         | 'okcoin'
         | 'okex'
-        | 'okex3'
         | 'okex5'
+        | 'okx'
         | 'paymium'
         | 'phemex'
         | 'poloniex'
@@ -650,11 +686,12 @@ declare module 'ccxt' {
         | 'tidebit'
         | 'tidex'
         | 'timex'
+        | 'tokocrypto'
         | 'upbit'
-        | 'vcc'
         | 'wavesexchange'
         | 'wazirx'
         | 'whitebit'
+        | 'woo'
         | 'xena'
         | 'yobit'
         | 'zaif'

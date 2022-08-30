@@ -10,15 +10,27 @@ use Exception; // a common import
 class ftxus extends ftx {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'ftxus',
             'name' => 'FTX US',
             'countries' => array( 'US' ),
             'certified' => false,
             'hostname' => 'ftx.us',
             'has' => array(
-                'future' => false,
+                'CORS' => null,
+                'spot' => true,
+                'margin' => null, // Has but not fully implemented
                 'swap' => false,
+                'future' => false,
+                'option' => null,
+                'fetchFundingHistory' => false,
+                'fetchFundingRate' => false,
+                'fetchFundingRateHistory' => false,
+                'fetchFundingRates' => false,
+                'fetchIndexOHLCV' => false,
+                'fetchMarkOHLCV' => false,
+                'fetchOpenInterestHistory' => false,
+                'fetchPremiumIndexOHLCV' => false,
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/1294454/141506670-12f6115f-f425-4cd8-b892-b51d157ca01f.jpg',

@@ -1,13 +1,8 @@
-import numbers  # noqa: E402
-try:
-    basestring  # basestring was removed in Python 3
-except NameError:
-    basestring = str
-
-# ----------------------------------------------------------------------------
+# -*- coding: utf-8 -*-
 
 
-#  ---------------------------------------------------------------------------
+import numbers  # noqa E402
+
 
 def test_ohlcv(exchange, ohlcv, symbol, now):
 
@@ -26,6 +21,7 @@ def test_ohlcv(exchange, ohlcv, symbol, now):
         'bitmex',  # BitMEX API docs: also note the open price is equal to the close price of the previous timeframe bucket.
         'vcc',  # same as BitMEX, the open price is equal to the close price of the previous timeframe bucket.
         'delta',
+        'cryptocom',
     ]
 
     if not exchange.in_array(exchange.id, skippedExchanges):

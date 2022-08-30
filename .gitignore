@@ -32,3 +32,5 @@ python/keys.json
 python/LICENSE.txt
 .env
 *.swp
+.cache
+*.un~

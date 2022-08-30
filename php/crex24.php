@@ -8,6 +8,7 @@ namespace ccxt;
 use Exception; // a common import
 use \ccxt\ExchangeError;
 use \ccxt\AuthenticationError;
+use \ccxt\ArgumentsRequired;
 use \ccxt\BadRequest;
 use \ccxt\InvalidOrder;
 use \ccxt\OrderNotFound;
@@ -18,7 +19,7 @@ use \ccxt\RequestTimeout;
 class crex24 extends Exchange {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'crex24',
             'name' => 'CREX24',
             'countries' => array( 'EE' ), // Estonia
@@ -26,33 +27,68 @@ class crex24 extends Exchange {
             'version' => 'v2',
             // new metainfo interface
             'has' => array(
+                'CORS' => null,
+                'spot' => true,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'addMargin' => false,
                 'cancelAllOrders' => true,
                 'cancelOrder' => true,
-                'CORS' => null,
+                'cancelOrders' => true,
                 'createOrder' => true,
+                'createReduceOnlyOrder' => false,
+                'createStopLimitOrder' => true,
+                'createStopMarketOrder' => true,
+                'createStopOrder' => true,
                 'editOrder' => true,
                 'fetchBalance' => true,
                 'fetchBidsAsks' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRateHistories' => false,
+                'fetchBorrowRateHistory' => false,
+                'fetchBorrowRates' => false,
+                'fetchBorrowRatesPerSymbol' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDepositAddress' => true,
                 'fetchDeposits' => true,
-                'fetchFundingFees' => true,
+                'fetchFundingHistory' => false,
+                'fetchFundingRate' => false,
+                'fetchFundingRateHistory' => false,
+                'fetchFundingRates' => false,
+                'fetchIndexOHLCV' => false,
+                'fetchLeverage' => false,
+                'fetchLeverageTiers' => false,
+                'fetchMarginMode' => false,
                 'fetchMarkets' => true,
+                'fetchMarkOHLCV' => false,
                 'fetchMyTrades' => true,
                 'fetchOHLCV' => true,
+                'fetchOpenInterestHistory' => false,
                 'fetchOpenOrders' => true,
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
                 'fetchOrders' => true,
                 'fetchOrderTrades' => true,
+                'fetchPosition' => false,
+                'fetchPositionMode' => false,
+                'fetchPositions' => false,
+                'fetchPositionsRisk' => false,
+                'fetchPremiumIndexOHLCV' => false,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTrades' => true,
-                'fetchTradingFee' => null, // actually, true, but will be implemented later
-                'fetchTradingFees' => null, // actually, true, but will be implemented later
+                'fetchTradingFee' => false,
+                'fetchTradingFees' => true,
+                'fetchTransactionFees' => true,
                 'fetchTransactions' => true,
                 'fetchWithdrawals' => true,
+                'reduceMargin' => false,
+                'setLeverage' => false,
+                'setMarginMode' => false,
+                'setPositionMode' => false,
                 'withdraw' => true,
             ),
             'timeframes' => array(
@@ -69,7 +105,9 @@ class crex24 extends Exchange {
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/1294454/47813922-6f12cc00-dd5d-11e8-97c6-70f957712d47.jpg',
-                'api' => 'https://api.crex24.com',
+                'api' => array(
+                    'rest' => 'https://api.crex24.com',
+                ),
                 'www' => 'https://crex24.com',
                 'referral' => 'https://crex24.com/?refid=slxsjsjtil8xexl9hksr',
                 'doc' => 'https://docs.crex24.com/trade-api/v2',
@@ -149,11 +187,14 @@ class crex24 extends Exchange {
                 'EPS' => 'Epanus',  // conflict with EPS Ellipsis https://github.com/ccxt/ccxt/issues/8909
                 'FUND' => 'FUNDChains',
                 'GHOST' => 'GHOSTPRISM',
+                'GM' => 'GM Holding',
+                'GMT' => 'GMT Token',
                 'GTC' => 'GastroCoin', // conflict with Gitcoin and Game.com
                 'IQ' => 'IQ.Cash',
                 'ONE' => 'One Hundred Coin',
                 'PUT' => 'PutinCoin',
                 'SBTC' => 'SBTCT', // SiamBitcoin
+                'SPH' => 'SapphireCoin',
                 'SUPER' => 'SuperCoin',
                 'UNI' => 'Universe',
                 'YOYO' => 'YOYOW',
@@ -173,6 +214,9 @@ class crex24 extends Exchange {
                 'warnOnFetchOpenOrdersWithoutSymbol' => true,
                 'parseOrderToPrecision' => false, // force amounts and costs in parseOrder to precision
                 'newOrderRespType' => 'RESULT', // 'ACK' for order id, 'RESULT' for full order or 'FULL' for order with fills
+                'fetchTradingFees' => array(
+                    'method' => 'fetchPrivateTradingFees', // or 'fetchPublicTradingFees'
+                ),
             ),
             'exceptions' => array(
                 'exact' => array(
@@ -203,6 +247,11 @@ class crex24 extends Exchange {
     }
 
     public function fetch_markets($params = array ()) {
+        /**
+         * retrieves data on all markets for crex24
+         * @param {array} $params extra parameters specific to the exchange api endpoint
+         * @return {[array]} an array of objects representing $market data
+         */
         $response = $this->publicGetInstruments ($params);
         //
         //         array( array(
@@ -287,18 +336,6 @@ class crex24 extends Exchange {
             $quoteId = $this->safe_string($market, 'quoteCurrency');
             $base = $this->safe_currency_code($baseId);
             $quote = $this->safe_currency_code($quoteId);
-            $symbol = $base . '/' . $quote;
-            $tickSize = $this->safe_number($market, 'tickSize');
-            $minPrice = $this->safe_number($market, 'minPrice');
-            $maxPrice = $this->safe_number($market, 'maxPrice');
-            $minAmount = $this->safe_number($market, 'minVolume');
-            $maxAmount = $this->safe_number($market, 'maxVolume');
-            $minCost = $this->safe_number($market, 'minQuoteVolume');
-            $maxCost = $this->safe_number($market, 'maxQuoteVolume');
-            $precision = array(
-                'amount' => $minAmount,
-                'price' => $tickSize,
-            );
             $maker = null;
             $taker = null;
             $feeSchedule = $this->safe_string($market, 'feeSchedule');
@@ -317,41 +354,67 @@ class crex24 extends Exchange {
                     break;
                 }
             }
-            $active = ($market['state'] === 'active');
+            $state = $this->safe_string($market, 'state');
             $result[] = array(
                 'id' => $id,
-                'symbol' => $symbol,
+                'symbol' => $base . '/' . $quote,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
                 'baseId' => $baseId,
                 'quoteId' => $quoteId,
-                'info' => $market,
+                'settleId' => null,
                 'type' => 'spot',
                 'spot' => true,
-                'active' => $active,
-                'precision' => $precision,
-                'maker' => $maker,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'active' => ($state === 'active'),
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
                 'taker' => $taker,
+                'maker' => $maker,
+                'contractSize' => null,
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'amount' => $this->safe_number($market, 'volumeIncrement'),
+                    'price' => $this->safe_number($market, 'tickSize'),
+                ),
                 'limits' => array(
+                    'leverage' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
                     'amount' => array(
-                        'min' => $minAmount,
-                        'max' => $maxAmount,
+                        'min' => $this->safe_number($market, 'minVolume'),
+                        'max' => $this->safe_number($market, 'maxVolume'),
                     ),
                     'price' => array(
-                        'min' => $minPrice,
-                        'max' => $maxPrice,
+                        'min' => $this->safe_number($market, 'minPrice'),
+                        'max' => $this->safe_number($market, 'maxPrice'),
                     ),
                     'cost' => array(
-                        'min' => $minCost,
-                        'max' => $maxCost,
+                        'min' => $this->safe_number($market, 'minQuoteVolume'),
+                        'max' => $this->safe_number($market, 'maxQuoteVolume'),
                     ),
                 ),
+                'info' => $market,
             );
         }
         return $result;
     }
 
     public function fetch_currencies($params = array ()) {
+        /**
+         * fetches all available currencies on an exchange
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} an associative dictionary of currencies
+         */
         $response = $this->publicGetCurrencies ($params);
         //
         //     array( array(                   symbol => "$PAC",
@@ -361,7 +424,7 @@ class crex24 extends Exchange {
         //         depositConfirmationCount =>  8,
         //                       minDeposit =>  0,
         //               withdrawalsAllowed =>  true,
-        //              $withdrawalPrecision =>  8,
+        //              withdrawalPrecision =>  8,
         //                    minWithdrawal =>  4,
         //                    maxWithdrawal =>  1000000000,
         //                flatWithdrawalFee =>  2,
@@ -373,7 +436,7 @@ class crex24 extends Exchange {
         //         depositConfirmationCount =>  8,
         //                       minDeposit =>  0,
         //               withdrawalsAllowed =>  false,
-        //              $withdrawalPrecision =>  8,
+        //              withdrawalPrecision =>  8,
         //                    minWithdrawal =>  0.2,
         //                    maxWithdrawal =>  1000000000,
         //                flatWithdrawalFee =>  0.1,
@@ -384,8 +447,7 @@ class crex24 extends Exchange {
             $currency = $response[$i];
             $id = $this->safe_string($currency, 'symbol');
             $code = $this->safe_currency_code($id);
-            $withdrawalPrecision = $this->safe_integer($currency, 'withdrawalPrecision');
-            $precision = pow(10, -$withdrawalPrecision);
+            $precision = $this->parse_number($this->parse_precision($this->safe_string($currency, 'withdrawalPrecision')));
             $address = $this->safe_value($currency, 'BaseAddress');
             $deposit = $this->safe_value($currency, 'depositsAllowed');
             $withdraw = $this->safe_value($currency, 'withdrawalsAllowed');
@@ -407,8 +469,8 @@ class crex24 extends Exchange {
                 'precision' => $precision,
                 'limits' => array(
                     'amount' => array(
-                        'min' => pow(10, -$precision),
-                        'max' => pow(10, $precision),
+                        'min' => $precision,
+                        'max' => null,
                     ),
                     'deposit' => array(
                         'min' => $this->safe_number($currency, 'minDeposit'),
@@ -424,7 +486,13 @@ class crex24 extends Exchange {
         return $result;
     }
 
-    public function fetch_funding_fees($codes = null, $params = array ()) {
+    public function fetch_transaction_fees($codes = null, $params = array ()) {
+        /**
+         * fetch transaction fees
+         * @param {[string]|null} $codes not used by crex24 fetchTransactionFees
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} a list of {@link https://docs.ccxt.com/en/latest/manual.html#$fee-structure transaction fees structures}
+         */
         $this->load_markets();
         $response = $this->publicGetCurrenciesWithdrawalFees ($params);
         //
@@ -482,6 +550,11 @@ class crex24 extends Exchange {
     }
 
     public function fetch_balance($params = array ()) {
+        /**
+         * query for balance and get the amount of funds available for trading or funds locked in orders
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} a ~@link https://docs.ccxt.com/en/latest/manual.html?#balance-structure balance structure~
+         */
         $this->load_markets();
         $request = array(
             // 'currency' => 'ETH', // comma-separated list of currency ids
@@ -501,6 +574,13 @@ class crex24 extends Exchange {
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
+        /**
+         * fetches information on open orders with bid (buy) and ask (sell) prices, volumes and other data
+         * @param {string} $symbol unified $symbol of the $market to fetch the order book for
+         * @param {int|null} $limit the maximum amount of order book entries to return
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} A dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#order-book-structure order book structures} indexed by $market symbols
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -528,7 +608,7 @@ class crex24 extends Exchange {
         //                     array( price => 0.03124, volume => 2.63462933 ),
         //                     array( price => 0.069, volume => 0.004 )            ) }
         //
-        return $this->parse_order_book($response, $symbol, null, 'buyLevels', 'sellLevels', 'price', 'volume');
+        return $this->parse_order_book($response, $market['symbol'], null, 'buyLevels', 'sellLevels', 'price', 'volume');
     }
 
     public function parse_ticker($ticker, $market = null) {
@@ -549,16 +629,16 @@ class crex24 extends Exchange {
         $timestamp = $this->parse8601($this->safe_string($ticker, 'timestamp'));
         $marketId = $this->safe_string($ticker, 'instrument');
         $symbol = $this->safe_symbol($marketId, $market, '-');
-        $last = $this->safe_number($ticker, 'last');
-        return array(
+        $last = $this->safe_string($ticker, 'last');
+        return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_number($ticker, 'high'),
-            'low' => $this->safe_number($ticker, 'low'),
-            'bid' => $this->safe_number($ticker, 'bid'),
+            'high' => $this->safe_string($ticker, 'high'),
+            'low' => $this->safe_string($ticker, 'low'),
+            'bid' => $this->safe_string($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_number($ticker, 'ask'),
+            'ask' => $this->safe_string($ticker, 'ask'),
             'askVolume' => null,
             'vwap' => null,
             'open' => null,
@@ -566,15 +646,21 @@ class crex24 extends Exchange {
             'last' => $last,
             'previousClose' => null, // previous day close
             'change' => null,
-            'percentage' => $this->safe_number($ticker, 'percentChange'),
+            'percentage' => $this->safe_string($ticker, 'percentChange'),
             'average' => null,
-            'baseVolume' => $this->safe_number($ticker, 'baseVolume'),
-            'quoteVolume' => $this->safe_number($ticker, 'quoteVolume'),
+            'baseVolume' => $this->safe_string($ticker, 'baseVolume'),
+            'quoteVolume' => $this->safe_string($ticker, 'quoteVolume'),
             'info' => $ticker,
-        );
+        ), $market);
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
+        /**
+         * fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific $market
+         * @param {string} $symbol unified $symbol of the $market to fetch the ticker for
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#ticker-structure ticker structure}
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -595,14 +681,20 @@ class crex24 extends Exchange {
         //                   bid =>  3.1e-7,
         //             timestamp => "2018-10-31T09:21:25Z" }   )
         //
-        $numTickers = is_array($response) ? count($response) : 0;
+        $numTickers = count($response);
         if ($numTickers < 1) {
-            throw new ExchangeError($this->id . ' fetchTicker could not load quotes for $symbol ' . $symbol);
+            throw new ExchangeError($this->id . ' fetchTicker() could not load quotes for $symbol ' . $symbol);
         }
         return $this->parse_ticker($response[0], $market);
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
+        /**
+         * fetches price tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each market
+         * @param {[string]|null} $symbols unified $symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} an array of {@link https://docs.ccxt.com/en/latest/manual.html#ticker-structure ticker structures}
+         */
         $this->load_markets();
         $request = array();
         if ($symbols !== null) {
@@ -699,6 +791,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
+        /**
+         * get the list of most recent trades for a particular $symbol
+         * @param {string} $symbol unified $symbol of the $market to fetch trades for
+         * @param {int|null} $since timestamp in ms of the earliest trade to fetch
+         * @param {int|null} $limit the maximum amount of trades to fetch
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of ~@link https://docs.ccxt.com/en/latest/manual.html?#public-trades trade structures~
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -719,6 +819,109 @@ class crex24 extends Exchange {
         //         timestamp => "2018-10-31T04:19:35Z" }  )
         //
         return $this->parse_trades($response, $market, $since, $limit);
+    }
+
+    public function fetch_trading_fees($params = array ()) {
+        /**
+         * fetch the trading fees for multiple markets
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} a dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#fee-structure fee structures} indexed by market symbols
+         */
+        $method = $this->safe_string($params, 'method');
+        $params = $this->omit($params, 'method');
+        if ($method === null) {
+            $options = $this->safe_value($this->options, 'fetchTradingFees', array());
+            $method = $this->safe_string($options, 'method', 'fetchPrivateTradingFees');
+        }
+        return $this->$method ($params);
+    }
+
+    public function fetch_public_trading_fees($params = array ()) {
+        $this->load_markets();
+        $response = $this->publicGetTradingFeeSchedules ($params);
+        //
+        //     array(
+        //         array(
+        //             name => 'FeeSchedule05',
+        //             $feeRates => array(
+        //                 array( volumeThreshold => 0, $maker => 0.0005, $taker => 0.0005 ),
+        //                 array( volumeThreshold => 5, $maker => 0.0004, $taker => 0.0004 ),
+        //                 array( volumeThreshold => 15, $maker => 0.0003, $taker => 0.0003 ),
+        //                 array( volumeThreshold => 30, $maker => 0.0002, $taker => 0.0002 ),
+        //                 array( volumeThreshold => 50, $maker => 0.0001, $taker => 0.0001 )
+        //             )
+        //         ),
+        //         {
+        //             name => 'OriginalSchedule',
+        //             $feeRates => array(
+        //                 array( volumeThreshold => 0, $maker => -0.0001, $taker => 0.001 ),
+        //                 array( volumeThreshold => 5, $maker => -0.0002, $taker => 0.0009 ),
+        //                 array( volumeThreshold => 15, $maker => -0.0003, $taker => 0.0008 ),
+        //                 array( volumeThreshold => 30, $maker => -0.0004, $taker => 0.0007 ),
+        //                 array( volumeThreshold => 50, $maker => -0.0005, $taker => 0.0006 )
+        //             )
+        //         }
+        //     )
+        //
+        $feeSchedulesByName = $this->index_by($response, 'name');
+        $originalSchedule = $this->safe_value($feeSchedulesByName, 'OriginalSchedule', array());
+        $feeRates = $this->safe_value($originalSchedule, 'feeRates', array());
+        $firstFee = $this->safe_value($feeRates, 0, array());
+        $maker = $this->safe_number($firstFee, 'maker');
+        $taker = $this->safe_number($firstFee, 'taker');
+        $result = array();
+        for ($i = 0; $i < count($this->symbols); $i++) {
+            $symbol = $this->symbols[$i];
+            $result[$symbol] = array(
+                'info' => $response,
+                'symbol' => $symbol,
+                'maker' => $maker,
+                'taker' => $taker,
+                'percentage' => true,
+                'tierBased' => true,
+            );
+        }
+        return $result;
+    }
+
+    public function fetch_private_trading_fees($params = array ()) {
+        $this->load_markets();
+        $response = $this->tradingGetTradingFee ($params);
+        //
+        //     {
+        //         $feeRates => array(
+        //             array( schedule => 'FeeSchedule05', $maker => 0.0005, $taker => 0.0005 ),
+        //             array( schedule => 'FeeSchedule08', $maker => 0.0008, $taker => 0.0008 ),
+        //             array( schedule => 'FeeSchedule10', $maker => 0.001, $taker => 0.001 ),
+        //             array( schedule => 'FeeSchedule15', $maker => 0.0015, $taker => 0.0015 ),
+        //             array( schedule => 'FeeSchedule20', $maker => 0.002, $taker => 0.002 ),
+        //             array( schedule => 'FeeSchedule30', $maker => 0.003, $taker => 0.003 ),
+        //             array( schedule => 'FeeSchedule40', $maker => 0.004, $taker => 0.004 ),
+        //             array( schedule => 'FeeSchedule50', $maker => 0.005, $taker => 0.005 ),
+        //             array( schedule => 'OriginalSchedule', $maker => -0.0001, $taker => 0.001 )
+        //         ),
+        //         tradingVolume => 0,
+        //         lastUpdate => '2022-03-16T04:55:02Z'
+        //     }
+        //
+        $feeRates = $this->safe_value($response, 'feeRates', array());
+        $feeRatesBySchedule = $this->index_by($feeRates, 'schedule');
+        $originalSchedule = $this->safe_value($feeRatesBySchedule, 'OriginalSchedule', array());
+        $maker = $this->safe_number($originalSchedule, 'maker');
+        $taker = $this->safe_number($originalSchedule, 'taker');
+        $result = array();
+        for ($i = 0; $i < count($this->symbols); $i++) {
+            $symbol = $this->symbols[$i];
+            $result[$symbol] = array(
+                'info' => $response,
+                'symbol' => $symbol,
+                'maker' => $maker,
+                'taker' => $taker,
+                'percentage' => true,
+                'tierBased' => true,
+            );
+        }
+        return $result;
     }
 
     public function parse_ohlcv($ohlcv, $market = null) {
@@ -743,6 +946,15 @@ class crex24 extends Exchange {
     }
 
     public function fetch_ohlcv($symbol, $timeframe = '1m', $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches historical candlestick data containing the open, high, low, and close price, and the volume of a $market
+         * @param {string} $symbol unified $symbol of the $market to fetch OHLCV data for
+         * @param {string} $timeframe the length of time each candle represents
+         * @param {int|null} $since timestamp in ms of the earliest candle to fetch
+         * @param {int|null} $limit the maximum amount of candles to fetch
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[[int]]} A list of candles ordered as timestamp, open, high, low, close, volume
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -803,6 +1015,10 @@ class crex24 extends Exchange {
         //         "childOrderId" => null
         //     }
         //
+        // cancelOrder, cancelOrders, cancelAllOrders
+        //
+        //  465448358
+        //
         $status = $this->parse_order_status($this->safe_string($order, 'status'));
         $marketId = $this->safe_string($order, 'instrument');
         $symbol = $this->safe_symbol($marketId, $market, '-');
@@ -811,7 +1027,7 @@ class crex24 extends Exchange {
         $amount = $this->safe_string($order, 'volume');
         $remaining = $this->safe_string($order, 'remainingVolume');
         $lastTradeTimestamp = $this->parse8601($this->safe_string($order, 'lastUpdate'));
-        $id = $this->safe_string($order, 'id');
+        $id = $this->safe_string($order, 'id', $order); // if $order was integer
         $type = $this->safe_string($order, 'type');
         $side = $this->safe_string($order, 'side');
         $timeInForce = $this->safe_string($order, 'timeInForce');
@@ -841,6 +1057,16 @@ class crex24 extends Exchange {
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
+        /**
+         * create a trade order
+         * @param {string} $symbol unified $symbol of the $market to create an order in
+         * @param {string} $type 'market' or 'limit'
+         * @param {string} $side 'buy' or 'sell'
+         * @param {float} $amount how much of currency you want to trade in units of base currency
+         * @param {float|null} $price the $price at which the order is to be fullfilled, in units of the quote currency, ignored in $market orders
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} an {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -861,7 +1087,7 @@ class crex24 extends Exchange {
         $stopPriceIsRequired = false;
         if ($type === 'limit') {
             $priceIsRequired = true;
-        } else if ($type === 'stopLimit') {
+        } elseif ($type === 'stopLimit') {
             $priceIsRequired = true;
             $stopPriceIsRequired = true;
         }
@@ -872,13 +1098,13 @@ class crex24 extends Exchange {
             $request['price'] = $this->price_to_precision($symbol, $price);
         }
         if ($stopPriceIsRequired) {
-            $stopPrice = $this->safe_number($params, 'stopPrice');
+            $stopPrice = $this->safe_value_2($params, 'triggerPrice', 'stopPrice');
             if ($stopPrice === null) {
                 throw new InvalidOrder($this->id . ' createOrder() requires a $stopPrice extra param for a ' . $type . ' order');
             } else {
                 $request['stopPrice'] = $this->price_to_precision($symbol, $stopPrice);
             }
-            $params = $this->omit($params, 'stopPrice');
+            $params = $this->omit($params, array( 'triggerPrice', 'stopPrice' ));
         }
         $response = $this->tradingPostPlaceOrder (array_merge($request, $params));
         //
@@ -904,6 +1130,12 @@ class crex24 extends Exchange {
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
+        /**
+         * fetches information on an order made by the user
+         * @param {string|null} $symbol unified $symbol of the market the order was made in
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
         $this->load_markets();
         $request = array(
             'id' => $id,
@@ -930,14 +1162,22 @@ class crex24 extends Exchange {
         //         }
         //     )
         //
-        $numOrders = is_array($response) ? count($response) : 0;
+        $numOrders = count($response);
         if ($numOrders < 1) {
-            throw new OrderNotFound($this->id . ' fetchOrder could not fetch order $id ' . $id);
+            throw new OrderNotFound($this->id . ' fetchOrder() could not fetch order $id ' . $id);
         }
         return $this->parse_order($response[0]);
     }
 
     public function fetch_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches information on multiple orders made by the user
+         * @param {string|null} $symbol unified $market $symbol of the $market orders were made in
+         * @param {int|null} $since the earliest time in ms to fetch orders for
+         * @param {int|null} $limit the maximum number of  orde structures to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $this->load_markets();
         $request = array();
         if ($since !== null) {
@@ -1007,6 +1247,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all unfilled currently open orders
+         * @param {string|null} $symbol unified $market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch open orders for
+         * @param {int|null} $limit the maximum number of  open orders structures to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $this->load_markets();
         $market = null;
         $request = array();
@@ -1058,6 +1306,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_closed_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches information on multiple closed orders made by the user
+         * @param {string|null} $symbol unified $market $symbol of the $market orders were made in
+         * @param {int|null} $since the earliest time in ms to fetch orders for
+         * @param {int|null} $limit the maximum number of  orde structures to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $this->load_markets();
         $market = null;
         $request = array();
@@ -1115,12 +1371,36 @@ class crex24 extends Exchange {
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
+        /**
+         * cancels an open order
+         * @param {string} $id order $id
+         * @param {string|null} $symbol unified $symbol of the market the order was made in
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
+        $response = $this->cancel_orders(array( $id ), $symbol, $params);
+        return $this->safe_value($response, 0);
+    }
+
+    public function cancel_orders($ids, $symbol = null, $params = array ()) {
+        /**
+         * cancel multiple orders
+         * @param {[string]} $ids order $ids
+         * @param {string|null} $symbol not used by crex24 cancelOrders ()
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} an list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
+        if (gettype($ids) !== 'array' || array_keys($ids) !== array_keys(array_keys($ids))) {
+            throw new ArgumentsRequired($this->id . ' cancelOrders() $ids argument should be an array');
+        }
         $this->load_markets();
         $request = array(
-            'ids' => array(
-                intval($id),
-            ),
+            'ids' => array(),
         );
+        for ($i = 0; $i < count($ids); $i++) {
+            $id = intval($ids[$i]);
+            $request['ids'][] = $id;
+        }
         $response = $this->tradingPostCancelOrdersById (array_merge($request, $params));
         //
         //     array(
@@ -1128,21 +1408,53 @@ class crex24 extends Exchange {
         //         468364313
         //     )
         //
-        return $this->parse_order($response);
+        return $this->parse_orders($response);
     }
 
     public function cancel_all_orders($symbol = null, $params = array ()) {
-        $response = $this->tradingPostCancelAllOrders ($params);
-        //
-        //     array(
-        //         465448358,
-        //         468364313
-        //     )
-        //
-        return $response;
+        /**
+         * cancel all open orders
+         * @param {string|null} $symbol unified $market $symbol, only orders in the $market of this $symbol are cancelled when $symbol is not null
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
+        $response = null;
+        $market = null;
+        if ($symbol === null) {
+            $response = $this->tradingPostCancelAllOrders ($params);
+            //
+            //     array(
+            //         465448358,
+            //         468364313
+            //     )
+            //
+        } else {
+            $this->load_markets();
+            $market = $this->market($symbol);
+            $request = array(
+                'instruments' => [ $market['id'] ],
+            );
+            $response = $this->tradingPostCancelOrdersByInstrument (array_merge($request, $params));
+            //
+            //     array(
+            //         465441234,
+            //         468364321
+            //     )
+            //
+        }
+        return $this->parse_orders($response, $market, null, null, $params);
     }
 
     public function fetch_order_trades($id, $symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all the trades made from a single order
+         * @param {string} $id order $id
+         * @param {string|null} $symbol unified market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch trades for
+         * @param {int|null} $limit the maximum number of trades to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#trade-structure trade structures}
+         */
         $this->load_markets();
         $request = array(
             'id' => $id,
@@ -1179,6 +1491,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all trades made by the user
+         * @param {string|null} $symbol unified $market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch trades for
+         * @param {int|null} $limit the maximum number of trades structures to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#trade-structure trade structures}
+         */
         $this->load_markets();
         $market = null;
         $request = array();
@@ -1224,6 +1544,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_transactions($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch history of deposits and withdrawals
+         * @param {string|null} $code unified $currency $code for the $currency of the transactions, default is null
+         * @param {int|null} $since timestamp in ms of the earliest transaction, default is null
+         * @param {int|null} $limit max number of transactions to return, default is null
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structure}
+         */
         $this->load_markets();
         $currency = null;
         $request = array();
@@ -1276,6 +1604,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all deposits made to an account
+         * @param {string|null} $code unified currency $code
+         * @param {int|null} $since the earliest time in ms to fetch deposits for
+         * @param {int|null} $limit the maximum number of deposits structures to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
         $request = array(
             'type' => 'deposit',
         );
@@ -1283,6 +1619,14 @@ class crex24 extends Exchange {
     }
 
     public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all withdrawals made from an account
+         * @param {string|null} $code unified currency $code
+         * @param {int|null} $since the earliest time in ms to fetch withdrawals for
+         * @param {int|null} $limit the maximum number of withdrawals structures to retrieve
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
         $request = array(
             'type' => 'withdrawal',
         );
@@ -1356,6 +1700,12 @@ class crex24 extends Exchange {
     }
 
     public function fetch_deposit_address($code, $params = array ()) {
+        /**
+         * fetch the deposit $address for a $currency associated with this account
+         * @param {string} $code unified $currency $code
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} an {@link https://docs.ccxt.com/en/latest/manual.html#$address-structure $address structure}
+         */
         $this->load_markets();
         $currency = $this->currency($code);
         $request = array(
@@ -1381,6 +1731,15 @@ class crex24 extends Exchange {
     }
 
     public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        /**
+         * make a withdrawal
+         * @param {string} $code unified $currency $code
+         * @param {float} $amount the $amount to withdraw
+         * @param {string} $address the $address to withdraw to
+         * @param {string|null} $tag
+         * @param {array} $params extra parameters specific to the crex24 api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structure}
+         */
         list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
         $this->check_address($address);
         $this->load_markets();
@@ -1417,7 +1776,7 @@ class crex24 extends Exchange {
                 $request .= '?' . $this->urlencode($query);
             }
         }
-        $url = $this->urls['api'] . $request;
+        $url = $this->urls['api']['rest'] . $request;
         if (($api === 'trading') || ($api === 'account')) {
             $this->check_required_credentials();
             $nonce = (string) $this->nonce();
@@ -1450,17 +1809,17 @@ class crex24 extends Exchange {
         $this->throw_broadly_matched_exception($this->exceptions['broad'], $message, $feedback);
         if ($code === 400) {
             throw new BadRequest($feedback);
-        } else if ($code === 401) {
+        } elseif ($code === 401) {
             throw new AuthenticationError($feedback);
-        } else if ($code === 403) {
+        } elseif ($code === 403) {
             throw new AuthenticationError($feedback);
-        } else if ($code === 429) {
+        } elseif ($code === 429) {
             throw new DDoSProtection($feedback);
-        } else if ($code === 500) {
+        } elseif ($code === 500) {
             throw new ExchangeError($feedback);
-        } else if ($code === 503) {
+        } elseif ($code === 503) {
             throw new ExchangeNotAvailable($feedback);
-        } else if ($code === 504) {
+        } elseif ($code === 504) {
             throw new RequestTimeout($feedback);
         }
         throw new ExchangeError($feedback); // unknown message

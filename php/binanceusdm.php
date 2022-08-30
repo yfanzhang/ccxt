@@ -10,7 +10,7 @@ use Exception; // a common import
 class binanceusdm extends binance {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'binanceusdm',
             'name' => 'Binance USDⓈ-M',
             'urls' => array(
@@ -20,12 +20,22 @@ class binanceusdm extends binance {
                     'https://binance-docs.github.io/apidocs/spot/en',
                 ),
             ),
+            'has' => array(
+                'CORS' => null,
+                'spot' => false,
+                'margin' => false,
+                'swap' => true,
+                'future' => true,
+                'option' => null,
+                'createStopMarketOrder' => true,
+            ),
             'options' => array(
                 'defaultType' => 'future',
                 // https://www.binance.com/en/support/faq/360033162192
                 // tier amount, maintenance margin, initial margin
                 'leverageBrackets' => null,
                 'marginTypes' => array(),
+                'marginModes' => array(),
             ),
         ));
     }

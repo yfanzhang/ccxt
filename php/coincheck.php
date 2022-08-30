@@ -12,25 +12,61 @@ use \ccxt\BadSymbol;
 class coincheck extends Exchange {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'coincheck',
             'name' => 'coincheck',
             'countries' => array( 'JP', 'ID' ),
             'rateLimit' => 1500,
             'has' => array(
-                'cancelOrder' => true,
                 'CORS' => null,
+                'spot' => true,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'addMargin' => false,
+                'cancelOrder' => true,
                 'createOrder' => true,
+                'createReduceOnlyOrder' => false,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRateHistories' => false,
+                'fetchBorrowRateHistory' => false,
+                'fetchBorrowRates' => false,
+                'fetchBorrowRatesPerSymbol' => false,
+                'fetchDeposits' => true,
+                'fetchFundingHistory' => false,
+                'fetchFundingRate' => false,
+                'fetchFundingRateHistory' => false,
+                'fetchFundingRates' => false,
+                'fetchIndexOHLCV' => false,
+                'fetchLeverage' => false,
+                'fetchMarginMode' => false,
+                'fetchMarkOHLCV' => false,
                 'fetchMyTrades' => true,
+                'fetchOpenInterestHistory' => false,
                 'fetchOpenOrders' => true,
                 'fetchOrderBook' => true,
+                'fetchPosition' => false,
+                'fetchPositionMode' => false,
+                'fetchPositions' => false,
+                'fetchPositionsRisk' => false,
+                'fetchPremiumIndexOHLCV' => false,
                 'fetchTicker' => true,
                 'fetchTrades' => true,
+                'fetchTradingFee' => false,
+                'fetchTradingFees' => true,
+                'fetchWithdrawals' => true,
+                'reduceMargin' => false,
+                'setLeverage' => false,
+                'setMarginMode' => false,
+                'setPositionMode' => false,
             ),
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/51840849/87182088-1d6d6380-c2ec-11ea-9c64-8ab9f9b289f5.jpg',
-                'api' => 'https://coincheck.com/api',
+                'api' => array(
+                    'rest' => 'https://coincheck.com/api',
+                ),
                 'www' => 'https://coincheck.com',
                 'doc' => 'https://coincheck.com/documents/exchange/api',
                 'fees' => array(
@@ -116,6 +152,7 @@ class coincheck extends Exchange {
                     'taker' => $this->parse_number('0'),
                 ),
             ),
+            'precisionMode' => TICK_SIZE,
             'exceptions' => array(
                 'exact' => array(
                     'disabled API Key' => '\\ccxt\\AuthenticationError', // array("success":false,"error":"disabled API Key")'
@@ -145,12 +182,25 @@ class coincheck extends Exchange {
     }
 
     public function fetch_balance($params = array ()) {
+        /**
+         * query for balance and get the amount of funds available for trading or funds locked in orders
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {array} a ~@link https://docs.ccxt.com/en/latest/manual.html?#balance-structure balance structure~
+         */
         $this->load_markets();
         $response = $this->privateGetAccountsBalance ($params);
         return $this->parse_balance($response);
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all unfilled currently open orders
+         * @param {string|null} $symbol unified $market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch open orders for
+         * @param {int|null} $limit the maximum number of  open orders structures to retrieve
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $this->load_markets();
         // Only BTC/JPY is meaningful
         $market = null;
@@ -217,36 +267,46 @@ class coincheck extends Exchange {
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
+        /**
+         * fetches information on open orders with bid (buy) and ask (sell) prices, volumes and other data
+         * @param {string} $symbol unified $symbol of the $market to fetch the order book for
+         * @param {int|null} $limit the maximum amount of order book entries to return
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {array} A dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#order-book-structure order book structures} indexed by $market symbols
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
             'pair' => $market['id'],
         );
         $response = $this->publicGetOrderBooks (array_merge($request, $params));
-        return $this->parse_order_book($response, $symbol);
+        return $this->parse_order_book($response, $market['symbol']);
     }
 
-    public function fetch_ticker($symbol, $params = array ()) {
-        if ($symbol !== 'BTC/JPY') {
-            throw new BadSymbol($this->id . ' fetchTicker () supports BTC/JPY only');
-        }
-        $this->load_markets();
-        $market = $this->market($symbol);
-        $request = array(
-            'pair' => $market['id'],
-        );
-        $ticker = $this->publicGetTicker (array_merge($request, $params));
+    public function parse_ticker($ticker, $market = null) {
+        //
+        // {
+        //     "last":4192632.0,
+        //     "bid":4192496.0,
+        //     "ask":4193749.0,
+        //     "high":4332000.0,
+        //     "low":4101047.0,
+        //     "volume":2313.43191762,
+        //     "timestamp":1643374115
+        // }
+        //
+        $symbol = $this->safe_symbol(null, $market);
         $timestamp = $this->safe_timestamp($ticker, 'timestamp');
-        $last = $this->safe_number($ticker, 'last');
-        return array(
+        $last = $this->safe_string($ticker, 'last');
+        return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_number($ticker, 'high'),
-            'low' => $this->safe_number($ticker, 'low'),
-            'bid' => $this->safe_number($ticker, 'bid'),
+            'high' => $this->safe_string($ticker, 'high'),
+            'low' => $this->safe_string($ticker, 'low'),
+            'bid' => $this->safe_string($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_number($ticker, 'ask'),
+            'ask' => $this->safe_string($ticker, 'ask'),
             'askVolume' => null,
             'vwap' => null,
             'open' => null,
@@ -256,10 +316,40 @@ class coincheck extends Exchange {
             'change' => null,
             'percentage' => null,
             'average' => null,
-            'baseVolume' => $this->safe_number($ticker, 'volume'),
+            'baseVolume' => $this->safe_string($ticker, 'volume'),
             'quoteVolume' => null,
             'info' => $ticker,
+        ), $market);
+    }
+
+    public function fetch_ticker($symbol, $params = array ()) {
+        /**
+         * fetches a price $ticker, a statistical calculation with the information calculated over the past 24 hours for a specific $market
+         * @param {string} $symbol unified $symbol of the $market to fetch the $ticker for
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#$ticker-structure $ticker structure}
+         */
+        if ($symbol !== 'BTC/JPY') {
+            throw new BadSymbol($this->id . ' fetchTicker() supports BTC/JPY only');
+        }
+        $this->load_markets();
+        $market = $this->market($symbol);
+        $request = array(
+            'pair' => $market['id'],
         );
+        $ticker = $this->publicGetTicker (array_merge($request, $params));
+        //
+        // {
+        //     "last":4192632.0,
+        //     "bid":4192496.0,
+        //     "ask":4193749.0,
+        //     "high":4332000.0,
+        //     "low":4101047.0,
+        //     "volume":2313.43191762,
+        //     "timestamp":1643374115
+        // }
+        //
+        return $this->parse_ticker($ticker, $market);
     }
 
     public function parse_trade($trade, $market = null) {
@@ -317,9 +407,7 @@ class coincheck extends Exchange {
             }
         }
         if ($symbol === null) {
-            if ($market !== null) {
-                $symbol = $market['symbol'];
-            }
+            $symbol = $this->safe_symbol(null, $market);
         }
         $takerOrMaker = null;
         $amountString = null;
@@ -330,7 +418,7 @@ class coincheck extends Exchange {
         if (is_array($trade) && array_key_exists('liquidity', $trade)) {
             if ($this->safe_string($trade, 'liquidity') === 'T') {
                 $takerOrMaker = 'taker';
-            } else if ($this->safe_string($trade, 'liquidity') === 'M') {
+            } elseif ($this->safe_string($trade, 'liquidity') === 'M') {
                 $takerOrMaker = 'maker';
             }
             $funds = $this->safe_value($trade, 'funds', array());
@@ -364,9 +452,21 @@ class coincheck extends Exchange {
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all trades made by the user
+         * @param {string|null} $symbol unified $market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch trades for
+         * @param {int|null} $limit the maximum number of trades structures to retrieve
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#trade-structure trade structures}
+         */
         $this->load_markets();
         $market = $this->market($symbol);
-        $response = $this->privateGetExchangeOrdersTransactions (array_merge(array(), $params));
+        $request = array();
+        if ($limit !== null) {
+            $request['limit'] = $limit;
+        }
+        $response = $this->privateGetExchangeOrdersTransactionsPagination (array_merge($request, $params));
         //
         //      {
         //          "success" => true,
@@ -394,6 +494,14 @@ class coincheck extends Exchange {
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
+        /**
+         * get the list of most recent trades for a particular $symbol
+         * @param {string} $symbol unified $symbol of the $market to fetch trades for
+         * @param {int|null} $since timestamp in ms of the earliest trade to fetch
+         * @param {int|null} $limit the maximum amount of trades to fetch
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {[array]} a list of ~@link https://docs.ccxt.com/en/latest/manual.html?#public-trades trade structures~
+         */
         $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -417,10 +525,66 @@ class coincheck extends Exchange {
         return $this->parse_trades($data, $market, $since, $limit);
     }
 
-    public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
+    public function fetch_trading_fees($params = array ()) {
+        /**
+         * fetch the trading $fees for multiple markets
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {array} a dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#$fee-structure $fee structures} indexed by $market symbols
+         */
         $this->load_markets();
+        $response = $this->privateGetAccounts ($params);
+        //
+        //     {
+        //         success => true,
+        //         id => '7487995',
+        //         email => 'some@email.com',
+        //         identity_status => 'identity_pending',
+        //         bitcoin_address => null,
+        //         lending_leverage => '4',
+        //         taker_fee => '0.0',
+        //         maker_fee => '0.0',
+        //         exchange_fees => {
+        //           btc_jpy => array( taker_fee => '0.0', maker_fee => '0.0' ),
+        //           etc_jpy => array( taker_fee => '0.0', maker_fee => '0.0' ),
+        //           fct_jpy => array( taker_fee => '0.0', maker_fee => '0.0' ),
+        //           mona_jpy => array( taker_fee => '0.0', maker_fee => '0.0' ),
+        //           plt_jpy => array( taker_fee => '0.0', maker_fee => '0.0' )
+        //         }
+        //     }
+        //
+        $fees = $this->safe_value($response, 'exchange_fees', array());
+        $result = array();
+        for ($i = 0; $i < count($this->symbols); $i++) {
+            $symbol = $this->symbols[$i];
+            $market = $this->market($symbol);
+            $fee = $this->safe_value($fees, $market['id'], array());
+            $result[$symbol] = array(
+                'info' => $fee,
+                'symbol' => $symbol,
+                'maker' => $this->safe_number($fee, 'maker_fee'),
+                'taker' => $this->safe_number($fee, 'taker_fee'),
+                'percentage' => true,
+                'tierBased' => false,
+            );
+        }
+        return $result;
+    }
+
+    public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
+        /**
+         * create a trade order
+         * @param {string} $symbol unified $symbol of the $market to create an order in
+         * @param {string} $type 'market' or 'limit'
+         * @param {string} $side 'buy' or 'sell'
+         * @param {float} $amount how much of currency you want to trade in units of base currency
+         * @param {float|null} $price the $price at which the order is to be fullfilled, in units of the quote currency, ignored in $market orders
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {array} an {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
+        $this->load_markets();
+        $market = $this->market($symbol);
         $request = array(
-            'pair' => $this->market_id($symbol),
+            'pair' => $market['id'],
         );
         if ($type === 'market') {
             $order_type = $type . '_' . $side;
@@ -441,10 +605,188 @@ class coincheck extends Exchange {
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
+        /**
+         * cancels an open order
+         * @param {string} $id order $id
+         * @param {string|null} $symbol not used by coincheck cancelOrder ()
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
         $request = array(
             'id' => $id,
         );
         return $this->privateDeleteExchangeOrdersId (array_merge($request, $params));
+    }
+
+    public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all deposits made to an account
+         * @param {string|null} $code unified $currency $code
+         * @param {int|null} $since the earliest time in ms to fetch deposits for
+         * @param {int|null} $limit the maximum number of deposits structures to retrieve
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
+        $this->load_markets();
+        $currency = null;
+        $request = array();
+        if ($code !== null) {
+            $currency = $this->currency($code);
+            $request['currency'] = $currency['id'];
+        }
+        if ($limit !== null) {
+            $request['limit'] = $limit;
+        }
+        $response = $this->privateGetDepositMoney (array_merge($request, $params));
+        // {
+        //   "success" => true,
+        //   "deposits" => array(
+        //     array(
+        //       "id" => 2,
+        //       "amount" => "0.05",
+        //       "currency" => "BTC",
+        //       "address" => "13PhzoK8me3u5nHzzFD85qT9RqEWR9M4Ty",
+        //       "status" => "confirmed",
+        //       "confirmed_at" => "2015-06-13T08:29:18.000Z",
+        //       "created_at" => "2015-06-13T08:22:18.000Z"
+        //     ),
+        //     {
+        //       "id" => 1,
+        //       "amount" => "0.01",
+        //       "currency" => "BTC",
+        //       "address" => "13PhzoK8me3u5nHzzFD85qT9RqEWR9M4Ty",
+        //       "status" => "received",
+        //       "confirmed_at" => "2015-06-13T08:21:18.000Z",
+        //       "created_at" => "2015-06-13T08:21:18.000Z"
+        //     }
+        //   )
+        // }
+        $data = $this->safe_value($response, 'deposits', array());
+        return $this->parse_transactions($data, $currency, $since, $limit, array( 'type' => 'deposit' ));
+    }
+
+    public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all withdrawals made from an account
+         * @param {string|null} $code unified $currency $code
+         * @param {int|null} $since the earliest time in ms to fetch withdrawals for
+         * @param {int|null} $limit the maximum number of withdrawals structures to retrieve
+         * @param {array} $params extra parameters specific to the coincheck api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
+        $this->load_markets();
+        $currency = null;
+        if ($code !== null) {
+            $currency = $this->currency($code);
+        }
+        $request = array();
+        if ($limit !== null) {
+            $request['limit'] = $limit;
+        }
+        $response = $this->privateGetWithdraws (array_merge($request, $params));
+        //  {
+        //   "success" => true,
+        //   "pagination" => array(
+        //     "limit" => 25,
+        //     "order" => "desc",
+        //     "starting_after" => null,
+        //     "ending_before" => null
+        //   ),
+        //   "data" => array(
+        //     {
+        //       "id" => 398,
+        //       "status" => "finished",
+        //       "amount" => "242742.0",
+        //       "currency" => "JPY",
+        //       "created_at" => "2014-12-04T15:00:00.000Z",
+        //       "bank_account_id" => 243,
+        //       "fee" => "400.0",
+        //       "is_fast" => true
+        //     }
+        //   )
+        // }
+        $data = $this->safe_value($response, 'data', array());
+        return $this->parse_transactions($data, $currency, $since, $limit, array( 'type' => 'withdrawal' ));
+    }
+
+    public function parse_transaction_status($status) {
+        $statuses = array(
+            // withdrawals
+            'pending' => 'pending',
+            'processing' => 'pending',
+            'finished' => 'ok',
+            'canceled' => 'canceled',
+            // deposits
+            'confirmed' => 'pending',
+            'received' => 'ok',
+        );
+        return $this->safe_string($statuses, $status, $status);
+    }
+
+    public function parse_transaction($transaction, $currency = null) {
+        //
+        // fetchDeposits
+        //
+        // {
+        //       "id" => 2,
+        //       "amount" => "0.05",
+        //       "currency" => "BTC",
+        //       "address" => "13PhzoK8me3u5nHzzFD85qT9RqEWR9M4Ty",
+        //       "status" => "confirmed",
+        //       "confirmed_at" => "2015-06-13T08:29:18.000Z",
+        //       "created_at" => "2015-06-13T08:22:18.000Z"
+        //  }
+        //
+        // fetchWithdrawals
+        //
+        //  {
+        //       "id" => 398,
+        //       "status" => "finished",
+        //       "amount" => "242742.0",
+        //       "currency" => "JPY",
+        //       "created_at" => "2014-12-04T15:00:00.000Z",
+        //       "bank_account_id" => 243,
+        //       "fee" => "400.0",
+        //       "is_fast" => true
+        //  }
+        //
+        $id = $this->safe_string($transaction, 'id');
+        $timestamp = $this->parse8601($this->safe_string($transaction, 'created_at'));
+        $address = $this->safe_string($transaction, 'address');
+        $amount = $this->safe_number($transaction, 'amount');
+        $currencyId = $this->safe_string($transaction, 'currency');
+        $code = $this->safe_currency_code($currencyId, $currency);
+        $status = $this->parse_transaction_status($this->safe_string($transaction, 'status'));
+        $updated = $this->parse8601($this->safe_string($transaction, 'confirmed_at'));
+        $fee = null;
+        $feeCost = $this->safe_number($transaction, 'fee');
+        if ($feeCost !== null) {
+            $fee = array(
+                'cost' => $feeCost,
+                'currency' => $code,
+            );
+        }
+        return array(
+            'info' => $transaction,
+            'id' => $id,
+            'txid' => null,
+            'timestamp' => $timestamp,
+            'datetime' => $this->iso8601($timestamp),
+            'network' => null,
+            'address' => $address,
+            'addressTo' => $address,
+            'addressFrom' => null,
+            'tag' => null,
+            'tagTo' => null,
+            'tagFrom' => null,
+            'type' => null,
+            'amount' => $amount,
+            'currency' => $code,
+            'status' => $status,
+            'updated' => $updated,
+            'internal' => null,
+            'fee' => $fee,
+        );
     }
 
     public function nonce() {
@@ -452,7 +794,7 @@ class coincheck extends Exchange {
     }
 
     public function sign($path, $api = 'public', $method = 'GET', $params = array (), $headers = null, $body = null) {
-        $url = $this->urls['api'] . '/' . $this->implode_params($path, $params);
+        $url = $this->urls['api']['rest'] . '/' . $this->implode_params($path, $params);
         $query = $this->omit($params, $this->extract_params($path));
         if ($api === 'public') {
             if ($query) {

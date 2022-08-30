@@ -5,7 +5,6 @@
 
 from ccxt.async_support.base.exchange import Exchange
 import hashlib
-import math
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import AuthenticationError
 from ccxt.base.errors import PermissionDenied
@@ -20,6 +19,7 @@ from ccxt.base.errors import ExchangeNotAvailable
 from ccxt.base.errors import OnMaintenance
 from ccxt.base.errors import RequestTimeout
 from ccxt.base.decimal_to_precision import TRUNCATE
+from ccxt.base.decimal_to_precision import TICK_SIZE
 
 
 class cdax(Exchange):
@@ -38,18 +38,34 @@ class cdax(Exchange):
             'hostname': 'cdax.io',
             'pro': False,
             'has': {
+                'CORS': None,
+                'spot': True,
+                'margin': None,  # has but unimplemented
+                'swap': None,
+                'future': None,
+                'option': None,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'cancelOrders': True,
-                'CORS': None,
                 'createOrder': True,
+                'createStopLimitOrder': False,
+                'createStopMarketOrder': False,
+                'createStopOrder': False,
+                'fetchAccounts': True,
                 'fetchBalance': True,
                 'fetchClosedOrders': True,
                 'fetchCurrencies': True,
                 'fetchDepositAddress': False,
                 'fetchDepositAddressesByNetwork': False,
                 'fetchDeposits': True,
+                'fetchFundingHistory': False,
+                'fetchFundingRate': False,
+                'fetchFundingRateHistory': False,
+                'fetchFundingRates': False,
+                'fetchIndexOHLCV': False,
+                'fetchMarginMode': False,
                 'fetchMarkets': True,
+                'fetchMarkOHLCV': False,
                 'fetchMyTrades': True,
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
@@ -57,11 +73,14 @@ class cdax(Exchange):
                 'fetchOrderBook': True,
                 'fetchOrders': True,
                 'fetchOrderTrades': True,
+                'fetchPositionMode': False,
                 'fetchPremiumIndexOHLCV': False,
                 'fetchTicker': True,
                 'fetchTickers': True,
                 'fetchTime': True,
                 'fetchTrades': True,
+                'fetchTradingFee': False,
+                'fetchTradingFees': False,
                 'fetchTradingLimits': True,
                 'fetchWithdrawals': True,
                 'withdraw': True,
@@ -179,6 +198,7 @@ class cdax(Exchange):
                     'taker': self.parse_number('0.002'),
                 },
             },
+            'precisionMode': TICK_SIZE,
             'exceptions': {
                 'broad': {
                     'contract is restricted of closing positions on API.  Please contact customer service': OnMaintenance,
@@ -230,7 +250,6 @@ class cdax(Exchange):
                 'fetchOrdersByStatesMethod': 'private_get_order_orders',  # 'private_get_order_history'  # https://github.com/ccxt/ccxt/pull/5392
                 'fetchOpenOrdersMethod': 'fetch_open_orders_v1',  # 'fetch_open_orders_v2'  # https://github.com/ccxt/ccxt/issues/5388
                 'createMarketBuyOrderRequiresPrice': True,
-                'fetchMarketsMethod': 'publicGetCommonSymbols',
                 'fetchBalanceMethod': 'privateGetAccountAccountsIdBalance',
                 'createOrderMethod': 'privatePostOrderOrdersPlace',
                 'language': 'en-US',
@@ -254,6 +273,11 @@ class cdax(Exchange):
         })
 
     async def fetch_time(self, params={}):
+        """
+        fetches the current integer timestamp in milliseconds from the exchange server
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns int: the current integer timestamp in milliseconds from the exchange server
+        """
         response = await self.publicGetCommonTimestamp(params)
         return self.safe_integer(response, 'data')
 
@@ -276,38 +300,44 @@ class cdax(Exchange):
         }
         response = await self.publicGetCommonExchange(self.extend(request, params))
         #
-        #     {status:   "ok",
-        #         data: {                                 symbol: "aidocbtc",
-        #                              'buy-limit-must-less-than':  1.1,
-        #                          'sell-limit-must-greater-than':  0.9,
-        #                         'limit-order-must-greater-than':  1,
-        #                            'limit-order-must-less-than':  5000000,
-        #                    'market-buy-order-must-greater-than':  0.0001,
-        #                       'market-buy-order-must-less-than':  100,
-        #                   'market-sell-order-must-greater-than':  1,
-        #                      'market-sell-order-must-less-than':  500000,
-        #                       'circuit-break-when-greater-than':  10000,
-        #                          'circuit-break-when-less-than':  10,
-        #                 'market-sell-order-rate-must-less-than':  0.1,
-        #                  'market-buy-order-rate-must-less-than':  0.1        }}
+        #    {
+        #        status:   "ok",
+        #        data: {
+        #            'symbol': "aidocbtc",
+        #            'buy-limit-must-less-than':  1.1,
+        #            'sell-limit-must-greater-than':  0.9,
+        #            'limit-order-must-greater-than':  1,
+        #            'limit-order-must-less-than':  5000000,
+        #            'market-buy-order-must-greater-than':  0.0001,
+        #            'market-buy-order-must-less-than':  100,
+        #            'market-sell-order-must-greater-than':  1,
+        #            'market-sell-order-must-less-than':  500000,
+        #            'circuit-break-when-greater-than':  10000,
+        #            'circuit-break-when-less-than':  10,
+        #            'market-sell-order-rate-must-less-than':  0.1,
+        #            'market-buy-order-rate-must-less-than':  0.1
+        #        }
+        #    }
         #
         return self.parse_trading_limits(self.safe_value(response, 'data', {}))
 
     def parse_trading_limits(self, limits, symbol=None, params={}):
         #
-        #   {                                 symbol: "aidocbtc",
-        #                  'buy-limit-must-less-than':  1.1,
-        #              'sell-limit-must-greater-than':  0.9,
-        #             'limit-order-must-greater-than':  1,
-        #                'limit-order-must-less-than':  5000000,
+        #    {
+        #        'symbol': "aidocbtc",
+        #        'buy-limit-must-less-than':  1.1,
+        #        'sell-limit-must-greater-than':  0.9,
+        #        'limit-order-must-greater-than':  1,
+        #        'limit-order-must-less-than':  5000000,
         #        'market-buy-order-must-greater-than':  0.0001,
-        #           'market-buy-order-must-less-than':  100,
-        #       'market-sell-order-must-greater-than':  1,
-        #          'market-sell-order-must-less-than':  500000,
-        #           'circuit-break-when-greater-than':  10000,
-        #              'circuit-break-when-less-than':  10,
-        #     'market-sell-order-rate-must-less-than':  0.1,
-        #      'market-buy-order-rate-must-less-than':  0.1        }
+        #        'market-buy-order-must-less-than':  100,
+        #        'market-sell-order-must-greater-than':  1,
+        #        'market-sell-order-must-less-than':  500000,
+        #        'circuit-break-when-greater-than':  10000,
+        #        'circuit-break-when-less-than':  10,
+        #        'market-sell-order-rate-must-less-than':  0.1,
+        #        'market-buy-order-rate-must-less-than':  0.1
+        #    }
         #
         return {
             'info': limits,
@@ -323,62 +353,101 @@ class cdax(Exchange):
         return self.decimal_to_precision(cost, TRUNCATE, self.markets[symbol]['precision']['cost'], self.precisionMode)
 
     async def fetch_markets(self, params={}):
-        method = self.options['fetchMarketsMethod']
-        response = await getattr(self, method)(params)
-        markets = self.safe_value(response, 'data')
+        """
+        retrieves data on all markets for cdax
+        :param dict params: extra parameters specific to the exchange api endpoint
+        :returns [dict]: an array of objects representing market data
+        """
+        response = await self.publicGetCommonSymbols(params)
+        #
+        #    {
+        #        "status": "ok",
+        #        "data": [
+        #            {
+        #                "base-currency": "ckb",
+        #                "quote-currency": "usdt",
+        #                "price-precision": 6,
+        #                "amount-precision": 2,
+        #                "symbol-partition": "default",
+        #                "symbol": "ckbusdt",
+        #                "state": "online",
+        #                "value-precision": 8,
+        #                "min-order-amt": 1,
+        #                "max-order-amt": 140000000,
+        #                "min-order-value": 5,
+        #                "limit-order-min-order-amt": 1,
+        #                "limit-order-max-order-amt": 140000000,
+        #                "limit-order-max-buy-amt": 140000000,
+        #                "limit-order-max-sell-amt": 140000000,
+        #                "sell-market-min-order-amt": 1,
+        #                "sell-market-max-order-amt": 14000000,
+        #                "buy-market-max-order-value": 200000,
+        #                "api-trading": "enabled",
+        #                "tags": ""
+        #            },
+        #        ]
+        #    }
+        #
+        markets = self.safe_value(response, 'data', [])
         numMarkets = len(markets)
         if numMarkets < 1:
-            raise NetworkError(self.id + ' publicGetCommonSymbols returned empty response: ' + self.json(markets))
+            raise NetworkError(self.id + ' fetchMarkets() returned empty response: ' + self.json(markets))
         result = []
         for i in range(0, len(markets)):
             market = markets[i]
             baseId = self.safe_string(market, 'base-currency')
             quoteId = self.safe_string(market, 'quote-currency')
-            id = baseId + quoteId
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
-            precision = {
-                'amount': self.safe_integer(market, 'amount-precision'),
-                'price': self.safe_integer(market, 'price-precision'),
-                'cost': self.safe_integer(market, 'value-precision'),
-            }
-            maker = 0 if (base == 'OMG') else 0.2 / 100
-            taker = 0 if (base == 'OMG') else 0.2 / 100
-            minAmount = self.safe_number(market, 'min-order-amt', math.pow(10, -precision['amount']))
-            maxAmount = self.safe_number(market, 'max-order-amt')
-            minCost = self.safe_number(market, 'min-order-value', 0)
             state = self.safe_string(market, 'state')
-            active = (state == 'online')
             result.append({
-                'id': id,
-                'symbol': symbol,
+                'id': baseId + quoteId,
+                'symbol': base + '/' + quote,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'type': 'spot',
                 'spot': True,
-                'active': active,
-                'precision': precision,
-                'taker': taker,
-                'maker': maker,
+                'margin': None,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'active': (state == 'online'),
+                'contract': False,
+                'linear': None,
+                'inverse': None,
+                'taker': 0 if (base == 'OMG') else 0.002,
+                'maker': 0 if (base == 'OMG') else 0.002,
+                'contractSize': None,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
+                'precision': {
+                    'amount': self.parse_number(self.parse_precision(self.safe_string(market, 'amount-precision'))),
+                    'price': self.parse_number(self.parse_precision(self.safe_string(market, 'price-precision'))),
+                    'cost': self.parse_number(self.parse_precision(self.safe_string(market, 'value-precision'))),
+                },
                 'limits': {
+                    'leverage': {
+                        'min': self.parse_number('1'),
+                        'max': self.safe_number(market, 'leverage-ratio', 1),
+                        'superMax': self.safe_number(market, 'super-margin-leverage-ratio', 1),
+                    },
                     'amount': {
-                        'min': minAmount,
-                        'max': maxAmount,
+                        'min': self.safe_number(market, 'min-order-amt'),
+                        'max': self.safe_number(market, 'max-order-amt'),
                     },
                     'price': {
-                        'min': math.pow(10, -precision['price']),
+                        'min': None,
                         'max': None,
                     },
                     'cost': {
-                        'min': minCost,
+                        'min': self.safe_number(market, 'min-order-value', 0),
                         'max': None,
-                    },
-                    'leverage': {
-                        'max': self.safe_number(market, 'leverage-ratio', 1),
-                        'superMax': self.safe_number(market, 'super-margin-leverage-ratio', 1),
                     },
                 },
                 'info': market,
@@ -427,34 +496,33 @@ class cdax(Exchange):
         askVolume = None
         if 'bid' in ticker:
             if isinstance(ticker['bid'], list):
-                bid = self.safe_number(ticker['bid'], 0)
-                bidVolume = self.safe_number(ticker['bid'], 1)
+                bid = self.safe_string(ticker['bid'], 0)
+                bidVolume = self.safe_string(ticker['bid'], 1)
             else:
-                bid = self.safe_number(ticker, 'bid')
-                bidVolume = self.safe_value(ticker, 'bidSize')
+                bid = self.safe_string(ticker, 'bid')
+                bidVolume = self.safe_string(ticker, 'bidSize')
         if 'ask' in ticker:
             if isinstance(ticker['ask'], list):
-                ask = self.safe_number(ticker['ask'], 0)
-                askVolume = self.safe_number(ticker['ask'], 1)
+                ask = self.safe_string(ticker['ask'], 0)
+                askVolume = self.safe_string(ticker['ask'], 1)
             else:
-                ask = self.safe_number(ticker, 'ask')
-                askVolume = self.safe_value(ticker, 'askSize')
-        open = self.safe_number(ticker, 'open')
-        close = self.safe_number(ticker, 'close')
-        baseVolume = self.safe_number(ticker, 'amount')
-        quoteVolume = self.safe_number(ticker, 'vol')
-        vwap = self.vwap(baseVolume, quoteVolume)
+                ask = self.safe_string(ticker, 'ask')
+                askVolume = self.safe_string(ticker, 'askSize')
+        open = self.safe_string(ticker, 'open')
+        close = self.safe_string(ticker, 'close')
+        baseVolume = self.safe_string(ticker, 'amount')
+        quoteVolume = self.safe_string(ticker, 'vol')
         return self.safe_ticker({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_number(ticker, 'high'),
-            'low': self.safe_number(ticker, 'low'),
+            'high': self.safe_string(ticker, 'high'),
+            'low': self.safe_string(ticker, 'low'),
             'bid': bid,
             'bidVolume': bidVolume,
             'ask': ask,
             'askVolume': askVolume,
-            'vwap': vwap,
+            'vwap': None,
             'open': open,
             'close': close,
             'last': close,
@@ -468,6 +536,13 @@ class cdax(Exchange):
         }, market)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
+        """
+        fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int|None limit: the maximum amount of order book entries to return
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/en/latest/manual.html#order-book-structure>` indexed by market symbols
+        """
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -501,12 +576,18 @@ class cdax(Exchange):
                 raise BadSymbol(self.id + ' fetchOrderBook() returned empty response: ' + self.json(response))
             tick = self.safe_value(response, 'tick')
             timestamp = self.safe_integer(tick, 'ts', self.safe_integer(response, 'ts'))
-            result = self.parse_order_book(tick, symbol, timestamp)
+            result = self.parse_order_book(tick, market['symbol'], timestamp)
             result['nonce'] = self.safe_integer(tick, 'version')
             return result
         raise ExchangeError(self.id + ' fetchOrderBook() returned unrecognized response: ' + self.json(response))
 
     async def fetch_ticker(self, symbol, params={}):
+        """
+        fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
+        :param str symbol: unified symbol of the market to fetch the ticker for
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: a `ticker structure <https://docs.ccxt.com/en/latest/manual.html#ticker-structure>`
+        """
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -540,9 +621,16 @@ class cdax(Exchange):
         return ticker
 
     async def fetch_tickers(self, symbols=None, params={}):
+        """
+        fetches price tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each market
+        :param [str]|None symbols: unified symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: an array of `ticker structures <https://docs.ccxt.com/en/latest/manual.html#ticker-structure>`
+        """
         await self.load_markets()
+        symbols = self.market_symbols(symbols)
         response = await self.marketGetTickers(params)
-        tickers = self.safe_value(response, 'data')
+        tickers = self.safe_value(response, 'data', [])
         timestamp = self.safe_integer(response, 'ts')
         result = {}
         for i in range(0, len(tickers)):
@@ -655,6 +743,15 @@ class cdax(Exchange):
         }, market)
 
     async def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
+        """
+        fetch all the trades made from a single order
+        :param str id: order id
+        :param str|None symbol: unified market symbol
+        :param int|None since: the earliest time in ms to fetch trades for
+        :param int|None limit: the maximum number of trades to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
+        """
         await self.load_markets()
         request = {
             'id': id,
@@ -663,6 +760,14 @@ class cdax(Exchange):
         return self.parse_trades(response['data'], None, since, limit)
 
     async def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetch all trades made by the user
+        :param str|None symbol: unified market symbol
+        :param int|None since: the earliest time in ms to fetch trades for
+        :param int|None limit: the maximum number of trades structures to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
+        """
         await self.load_markets()
         market = None
         request = {}
@@ -678,6 +783,14 @@ class cdax(Exchange):
         return self.parse_trades(response['data'], market, since, limit)
 
     async def fetch_trades(self, symbol, since=None, limit=1000, params={}):
+        """
+        get the list of most recent trades for a particular symbol
+        :param str symbol: unified symbol of the market to fetch trades for
+        :param int|None since: timestamp in ms of the earliest trade to fetch
+        :param int|None limit: the maximum amount of trades to fetch
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
+        """
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -710,7 +823,7 @@ class cdax(Exchange):
         #         ]
         #     }
         #
-        data = self.safe_value(response, 'data')
+        data = self.safe_value(response, 'data', [])
         result = []
         for i in range(0, len(data)):
             trades = self.safe_value(data[i], 'data', [])
@@ -718,7 +831,7 @@ class cdax(Exchange):
                 trade = self.parse_trade(trades[j], market)
                 result.append(trade)
         result = self.sort_by(result, 'timestamp')
-        return self.filter_by_symbol_since_limit(result, symbol, since, limit)
+        return self.filter_by_symbol_since_limit(result, market['symbol'], since, limit)
 
     def parse_ohlcv(self, ohlcv, market=None):
         #
@@ -743,6 +856,15 @@ class cdax(Exchange):
         ]
 
     async def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=1000, params={}):
+        """
+        fetches historical candlestick data containing the open, high, low, and close price, and the volume of a market
+        :param str symbol: unified symbol of the market to fetch OHLCV data for
+        :param str timeframe: the length of time each candle represents
+        :param int|None since: timestamp in ms of the earliest candle to fetch
+        :param int|None limit: the maximum amount of candles to fetch
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [[int]]: A list of candles ordered as timestamp, open, high, low, close, volume
+        """
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -768,11 +890,21 @@ class cdax(Exchange):
         return self.parse_ohlcvs(data, market, timeframe, since, limit)
 
     async def fetch_accounts(self, params={}):
+        """
+        fetch all the accounts associated with a profile
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: a dictionary of `account structures <https://docs.ccxt.com/en/latest/manual.html#account-structure>` indexed by the account type
+        """
         await self.load_markets()
         response = await self.privateGetAccountAccounts(params)
         return response['data']
 
     async def fetch_currencies(self, params={}):
+        """
+        fetches all available currencies on an exchange
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: an associative dictionary of currencies
+        """
         request = {
             'language': self.options['language'],
         }
@@ -817,12 +949,12 @@ class cdax(Exchange):
         #         ]
         #     }
         #
-        currencies = self.safe_value(response, 'data')
+        currencies = self.safe_value(response, 'data', [])
         result = {}
         for i in range(0, len(currencies)):
             currency = currencies[i]
             id = self.safe_value(currency, 'name')
-            precision = self.safe_integer(currency, 'withdraw-precision')
+            precision = self.parse_number(self.parse_precision(self.safe_string(currency, 'withdraw-precision')))
             code = self.safe_currency_code(id)
             depositEnabled = self.safe_value(currency, 'deposit-enabled')
             withdrawEnabled = self.safe_value(currency, 'withdraw-enabled')
@@ -846,16 +978,16 @@ class cdax(Exchange):
                 'precision': precision,
                 'limits': {
                     'amount': {
-                        'min': math.pow(10, -precision),
-                        'max': math.pow(10, precision),
+                        'min': precision,
+                        'max': None,
                     },
                     'deposit': {
                         'min': self.safe_number(currency, 'deposit-min-amount'),
-                        'max': math.pow(10, precision),
+                        'max': None,
                     },
                     'withdraw': {
                         'min': self.safe_number(currency, 'withdraw-min-amount'),
-                        'max': math.pow(10, precision),
+                        'max': None,
                     },
                 },
                 'info': currency,
@@ -882,6 +1014,11 @@ class cdax(Exchange):
         return self.safe_balance(result)
 
     async def fetch_balance(self, params={}):
+        """
+        query for balance and get the amount of funds available for trading or funds locked in orders
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: a `balance structure <https://docs.ccxt.com/en/latest/manual.html?#balance-structure>`
+        """
         await self.load_markets()
         await self.load_accounts()
         method = self.options['fetchBalanceMethod']
@@ -922,6 +1059,12 @@ class cdax(Exchange):
         return self.parse_orders(response['data'], market, since, limit)
 
     async def fetch_order(self, id, symbol=None, params={}):
+        """
+        fetches information on an order made by the user
+        :param str|None symbol: not used by cdax fetchOrder
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         await self.load_markets()
         request = {
             'id': id,
@@ -931,9 +1074,25 @@ class cdax(Exchange):
         return self.parse_order(order)
 
     async def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetches information on multiple orders made by the user
+        :param str|None symbol: unified market symbol of the market orders were made in
+        :param int|None since: the earliest time in ms to fetch orders for
+        :param int|None limit: the maximum number of  orde structures to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         return await self.fetch_orders_by_states('pre-submitted,submitted,partial-filled,filled,partial-canceled,canceled', symbol, since, limit, params)
 
     async def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetch all unfilled currently open orders
+        :param str|None symbol: unified market symbol
+        :param int|None since: the earliest time in ms to fetch open orders for
+        :param int|None limit: the maximum number of  open orders structures to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         method = self.safe_string(self.options, 'fetchOpenOrdersMethod', 'fetch_open_orders_v1')
         return await getattr(self, method)(symbol, since, limit, params)
 
@@ -943,6 +1102,14 @@ class cdax(Exchange):
         return await self.fetch_orders_by_states('pre-submitted,submitted,partial-filled', symbol, since, limit, params)
 
     async def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetches information on multiple closed orders made by the user
+        :param str|None symbol: unified market symbol of the market orders were made in
+        :param int|None since: the earliest time in ms to fetch orders for
+        :param int|None limit: the maximum number of  orde structures to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         return await self.fetch_orders_by_states('filled,partial-canceled,canceled', symbol, since, limit, params)
 
     async def fetch_open_orders_v2(self, symbol=None, since=None, limit=None, params={}):
@@ -1044,7 +1211,6 @@ class cdax(Exchange):
             type = self.safe_string(parts, 1)
         marketId = self.safe_string(order, 'symbol')
         market = self.safe_market(marketId, market)
-        symbol = market['symbol']
         timestamp = self.safe_integer(order, 'created-at')
         clientOrderId = self.safe_string(order, 'client-order-id')
         filledString = self.safe_string_2(order, 'filled-amount', 'field-amount')  # typo in their API, filled amount
@@ -1056,9 +1222,7 @@ class cdax(Exchange):
         feeCostString = self.safe_string_2(order, 'filled-fees', 'field-fees')  # typo in their API, filled fees
         fee = None
         if feeCostString is not None:
-            feeCurrency = None
-            if market is not None:
-                feeCurrency = market['quote'] if (side == 'sell') else market['base']
+            feeCurrency = market['quote'] if (side == 'sell') else market['base']
             fee = {
                 'cost': feeCostString,
                 'currency': feeCurrency,
@@ -1070,7 +1234,7 @@ class cdax(Exchange):
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'lastTradeTimestamp': None,
-            'symbol': symbol,
+            'symbol': market['symbol'],
             'type': type,
             'timeInForce': None,
             'postOnly': None,
@@ -1088,6 +1252,16 @@ class cdax(Exchange):
         }, market)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
+        """
+        create a trade order
+        :param str symbol: unified symbol of the market to create an order in
+        :param str type: 'market' or 'limit'
+        :param str side: 'buy' or 'sell'
+        :param float amount: how much of currency you want to trade in units of base currency
+        :param float|None price: the price at which the order is to be fullfilled, in units of the quote currency, ignored in market orders
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: an `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         await self.load_markets()
         await self.load_accounts()
         market = self.market(symbol)
@@ -1097,11 +1271,7 @@ class cdax(Exchange):
             'type': side + '-' + type,
         }
         clientOrderId = self.safe_string_2(params, 'clientOrderId', 'client-order-id')  # must be 64 chars max and unique within 24 hours
-        if clientOrderId is None:
-            broker = self.safe_value(self.options, 'broker', {})
-            brokerId = self.safe_string(broker, 'id')
-            request['client-order-id'] = brokerId + self.uuid()
-        else:
+        if clientOrderId is not None:
             request['client-order-id'] = clientOrderId
         params = self.omit(params, ['clientOrderId', 'client-order-id'])
         if (type == 'market') and (side == 'buy'):
@@ -1133,7 +1303,7 @@ class cdax(Exchange):
             'datetime': self.iso8601(timestamp),
             'lastTradeTimestamp': None,
             'status': None,
-            'symbol': symbol,
+            'symbol': market['symbol'],
             'type': type,
             'side': side,
             'price': price,
@@ -1148,6 +1318,13 @@ class cdax(Exchange):
         }
 
     async def cancel_order(self, id, symbol=None, params={}):
+        """
+        cancels an open order
+        :param str id: order id
+        :param str|None symbol: not used by cdax cancelOrder()
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         response = await self.privatePostOrderOrdersIdSubmitcancel({'id': id})
         #
         #     {
@@ -1161,6 +1338,13 @@ class cdax(Exchange):
         })
 
     async def cancel_orders(self, ids, symbol=None, params={}):
+        """
+        cancel multiple orders
+        :param [str] ids: order ids
+        :param str|None symbol: not used by cdax cancelOrders()
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: an list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         await self.load_markets()
         clientOrderIds = self.safe_value_2(params, 'clientOrderIds', 'client-order-ids')
         params = self.omit(params, ['clientOrderIds', 'client-order-ids'])
@@ -1205,6 +1389,12 @@ class cdax(Exchange):
         return response
 
     async def cancel_all_orders(self, symbol=None, params={}):
+        """
+        cancel all open orders
+        :param str|None symbol: unified market symbol, only orders in the market of self symbol are cancelled when symbol is not None
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         await self.load_markets()
         request = {
             # 'account-id' string False NA The account id used for self cancel Refer to GET /v1/account/accounts
@@ -1230,8 +1420,8 @@ class cdax(Exchange):
         #
         return response
 
-    def currency_to_precision(self, currency, fee):
-        return self.decimal_to_precision(fee, 0, self.currencies[currency]['precision'])
+    def currency_to_precision(self, code, fee, networkCode=None):
+        return self.decimal_to_precision(fee, 0, self.currencies[code]['precision'], self.precisionMode)
 
     def safe_network(self, networkId):
         lastCharacterIndex = len(networkId) - 1
@@ -1252,8 +1442,6 @@ class cdax(Exchange):
         #
         address = self.safe_string(depositAddress, 'address')
         tag = self.safe_string(depositAddress, 'addressTag')
-        if tag == '':
-            tag = None
         currencyId = self.safe_string(depositAddress, 'currency')
         currency = self.safe_currency(currencyId, currency)
         code = self.safe_currency_code(currencyId, currency)
@@ -1272,6 +1460,14 @@ class cdax(Exchange):
         }
 
     async def fetch_deposits(self, code=None, since=None, limit=None, params={}):
+        """
+        fetch all deposits made to an account
+        :param str|None code: unified currency code
+        :param int|None since: the earliest time in ms to fetch deposits for
+        :param int|None limit: the maximum number of deposits structures to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
+        """
         if limit is None or limit > 100:
             limit = 100
         await self.load_markets()
@@ -1291,6 +1487,14 @@ class cdax(Exchange):
         return self.parse_transactions(response['data'], currency, since, limit)
 
     async def fetch_withdrawals(self, code=None, since=None, limit=None, params={}):
+        """
+        fetch all withdrawals made from an account
+        :param str|None code: unified currency code
+        :param int|None since: the earliest time in ms to fetch withdrawals for
+        :param int|None limit: the maximum number of withdrawals structures to retrieve
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
+        """
         if limit is None or limit > 100:
             limit = 100
         await self.load_markets()
@@ -1360,7 +1564,7 @@ class cdax(Exchange):
         network = self.safe_string_upper(transaction, 'chain')
         return {
             'info': transaction,
-            'id': self.safe_string(transaction, 'id'),
+            'id': self.safe_string_2(transaction, 'id', 'data'),
             'txid': self.safe_string(transaction, 'tx-hash'),
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -1407,6 +1611,15 @@ class cdax(Exchange):
         return self.safe_string(statuses, status, status)
 
     async def withdraw(self, code, amount, address, tag=None, params={}):
+        """
+        make a withdrawal
+        :param str code: unified currency code
+        :param float amount: the amount to withdraw
+        :param str address: the address to withdraw to
+        :param str|None tag:
+        :param dict params: extra parameters specific to the cdax api endpoint
+        :returns dict: a `transaction structure <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
+        """
         tag, params = self.handle_withdraw_tag_and_params(tag, params)
         await self.load_markets()
         self.check_address(address)
@@ -1429,11 +1642,7 @@ class cdax(Exchange):
                 request['chain'] = network + currency['id']
             params = self.omit(params, 'network')
         response = await self.privatePostDwWithdrawApiCreate(self.extend(request, params))
-        id = self.safe_string(response, 'data')
-        return {
-            'info': response,
-            'id': id,
-        }
+        return self.parse_transaction(response, currency)
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         url = '/'
@@ -1480,9 +1689,6 @@ class cdax(Exchange):
             'hostname': self.hostname,
         }) + url
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
-
-    def calculate_rate_limiter_cost(self, api, method, path, params, config={}, context={}):
-        return self.safe_integer(config, 'cost', 1)
 
     def handle_errors(self, httpCode, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:

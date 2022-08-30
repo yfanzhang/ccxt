@@ -12,6 +12,7 @@ from ccxt.base.errors import BadRequest
 from ccxt.base.errors import InsufficientFunds
 from ccxt.base.errors import InvalidOrder
 from ccxt.base.errors import OrderNotFound
+from ccxt.base.decimal_to_precision import TICK_SIZE
 
 
 class oceanex(Exchange):
@@ -25,21 +26,32 @@ class oceanex(Exchange):
             'rateLimit': 3000,
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/58385970-794e2d80-8001-11e9-889c-0567cd79b78e.jpg',
-                'api': 'https://api.oceanex.pro',
+                'api': {
+                    'rest': 'https://api.oceanex.pro',
+                },
                 'www': 'https://www.oceanex.pro.com',
                 'doc': 'https://api.oceanex.pro/doc/v1',
                 'referral': 'https://oceanex.pro/signup?referral=VE24QX',
             },
             'has': {
+                'CORS': None,
+                'spot': True,
+                'margin': False,
+                'swap': None,  # has but unimplemented
+                'future': None,
+                'option': None,
                 'cancelAllOrders': True,
                 'cancelOrder': True,
                 'cancelOrders': True,
                 'createMarketOrder': True,
                 'createOrder': True,
-                'fetchAllTradingFees': True,
                 'fetchBalance': True,
+                'fetchBorrowRate': False,
+                'fetchBorrowRateHistories': False,
+                'fetchBorrowRateHistory': False,
+                'fetchBorrowRates': False,
+                'fetchBorrowRatesPerSymbol': False,
                 'fetchClosedOrders': True,
-                'fetchFundingFees': None,
                 'fetchMarkets': True,
                 'fetchOHLCV': True,
                 'fetchOpenOrders': True,
@@ -51,8 +63,10 @@ class oceanex(Exchange):
                 'fetchTickers': True,
                 'fetchTime': True,
                 'fetchTrades': True,
-                'fetchTradingFees': None,
+                'fetchTradingFee': False,
+                'fetchTradingFees': True,
                 'fetchTradingLimits': None,
+                'fetchTransactionFees': None,
             },
             'timeframes': {
                 '1m': '1',
@@ -104,13 +118,14 @@ class oceanex(Exchange):
                 'trading': {
                     'tierBased': False,
                     'percentage': True,
-                    'maker': 0.1 / 100,
-                    'taker': 0.1 / 100,
+                    'maker': self.parse_number('0.001'),
+                    'taker': self.parse_number('0.001'),
                 },
             },
             'commonCurrencies': {
                 'PLA': 'Plair',
             },
+            'precisionMode': TICK_SIZE,
             'exceptions': {
                 'codes': {
                     '-1': BadRequest,
@@ -136,10 +151,28 @@ class oceanex(Exchange):
         })
 
     def fetch_markets(self, params={}):
+        """
+        retrieves data on all markets for oceanex
+        :param dict params: extra parameters specific to the exchange api endpoint
+        :returns [dict]: an array of objects representing market data
+        """
         request = {'show_details': True}
         response = self.publicGetMarkets(self.extend(request, params))
+        #
+        #    {
+        #        id: 'xtzusdt',
+        #        name: 'XTZ/USDT',
+        #        ask_precision: '8',
+        #        bid_precision: '8',
+        #        enabled: True,
+        #        price_precision: '4',
+        #        amount_precision: '3',
+        #        usd_precision: '4',
+        #        minimum_trading_amount: '1.0'
+        #    },
+        #
         result = []
-        markets = self.safe_value(response, 'data')
+        markets = self.safe_value(response, 'data', [])
         for i in range(0, len(markets)):
             market = markets[i]
             id = self.safe_value(market, 'id')
@@ -155,19 +188,34 @@ class oceanex(Exchange):
                 'symbol': symbol,
                 'base': base,
                 'quote': quote,
+                'settle': None,
                 'baseId': baseId,
                 'quoteId': quoteId,
+                'settleId': None,
                 'type': 'spot',
                 'spot': True,
-                'active': True,
-                'info': market,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'active': None,
+                'contract': False,
+                'linear': None,
+                'inverse': None,
+                'contractSize': None,
+                'expiry': None,
+                'expiryDatetime': None,
+                'strike': None,
+                'optionType': None,
                 'precision': {
-                    'amount': self.safe_integer(market, 'amount_precision'),
-                    'price': self.safe_integer(market, 'price_precision'),
-                    'base': self.safe_integer(market, 'ask_precision'),
-                    'quote': self.safe_integer(market, 'bid_precision'),
+                    'amount': self.parse_number(self.parse_precision(self.safe_string(market, 'amount_precision'))),
+                    'price': self.parse_number(self.parse_precision(self.safe_string(market, 'price_precision'))),
                 },
                 'limits': {
+                    'leverage': {
+                        'min': None,
+                        'max': None,
+                    },
                     'amount': {
                         'min': None,
                         'max': None,
@@ -181,10 +229,17 @@ class oceanex(Exchange):
                         'max': None,
                     },
                 },
+                'info': market,
             })
         return result
 
     def fetch_ticker(self, symbol, params={}):
+        """
+        fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
+        :param str symbol: unified symbol of the market to fetch the ticker for
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: a `ticker structure <https://docs.ccxt.com/en/latest/manual.html#ticker-structure>`
+        """
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -212,7 +267,14 @@ class oceanex(Exchange):
         return self.parse_ticker(data, market)
 
     def fetch_tickers(self, symbols=None, params={}):
+        """
+        fetches price tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each market
+        :param [str]|None symbols: unified symbols of the markets to fetch the ticker for, all market tickers are returned if not assigned
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: an array of `ticker structures <https://docs.ccxt.com/en/latest/manual.html#ticker-structure>`
+        """
         self.load_markets()
+        symbols = self.market_symbols(symbols)
         if symbols is None:
             symbols = self.symbols
         marketIds = self.market_ids(symbols)
@@ -235,7 +297,7 @@ class oceanex(Exchange):
         #         }
         #     }
         #
-        data = self.safe_value(response, 'data')
+        data = self.safe_value(response, 'data', [])
         result = {}
         for i in range(0, len(data)):
             ticker = data[i]
@@ -261,30 +323,38 @@ class oceanex(Exchange):
         #
         ticker = self.safe_value(data, 'ticker', {})
         timestamp = self.safe_timestamp(data, 'at')
-        return {
-            'symbol': market['symbol'],
+        symbol = self.safe_symbol(None, market)
+        return self.safe_ticker({
+            'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
-            'high': self.safe_number(ticker, 'high'),
-            'low': self.safe_number(ticker, 'low'),
-            'bid': self.safe_number(ticker, 'buy'),
+            'high': self.safe_string(ticker, 'high'),
+            'low': self.safe_string(ticker, 'low'),
+            'bid': self.safe_string(ticker, 'buy'),
             'bidVolume': None,
-            'ask': self.safe_number(ticker, 'sell'),
+            'ask': self.safe_string(ticker, 'sell'),
             'askVolume': None,
             'vwap': None,
             'open': None,
-            'close': self.safe_number(ticker, 'last'),
-            'last': self.safe_number(ticker, 'last'),
+            'close': self.safe_string(ticker, 'last'),
+            'last': self.safe_string(ticker, 'last'),
             'previousClose': None,
             'change': None,
             'percentage': None,
             'average': None,
-            'baseVolume': self.safe_number(ticker, 'volume'),
+            'baseVolume': self.safe_string(ticker, 'volume'),
             'quoteVolume': None,
             'info': ticker,
-        }
+        }, market)
 
     def fetch_order_book(self, symbol, limit=None, params={}):
+        """
+        fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int|None limit: the maximum amount of order book entries to return
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/en/latest/manual.html#order-book-structure>` indexed by market symbols
+        """
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -317,6 +387,13 @@ class oceanex(Exchange):
         return self.parse_order_book(orderbook, symbol, timestamp)
 
     def fetch_order_books(self, symbols=None, limit=None, params={}):
+        """
+        fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data for multiple markets
+        :param [str]|None symbols: list of unified market symbols, all symbols fetched if None, default is None
+        :param int|None limit: max number of entries per orderbook to return, default is None
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: a dictionary of `order book structures <https://docs.ccxt.com/en/latest/manual.html#order-book-structure>` indexed by market symbol
+        """
         self.load_markets()
         if symbols is None:
             symbols = self.symbols
@@ -361,6 +438,14 @@ class oceanex(Exchange):
         return result
 
     def fetch_trades(self, symbol, since=None, limit=None, params={}):
+        """
+        get the list of most recent trades for a particular symbol
+        :param str symbol: unified symbol of the market to fetch trades for
+        :param int|None since: timestamp in ms of the earliest trade to fetch
+        :param int|None limit: the maximum amount of trades to fetch
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
+        """
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -369,10 +454,42 @@ class oceanex(Exchange):
         if limit is not None:
             request['limit'] = limit
         response = self.publicGetTrades(self.extend(request, params))
+        #
+        #      {
+        #          "code":0,
+        #          "message":"Operation successful",
+        #          "data": [
+        #              {
+        #                  "id":220247666,
+        #                  "price":"3098.62",
+        #                  "volume":"0.00196",
+        #                  "funds":"6.0732952",
+        #                  "market":"ethusdt",
+        #                  "created_at":"2022-04-19T19:03:15Z",
+        #                  "created_on":1650394995,
+        #                  "side":"bid"
+        #              },
+        #          ]
+        #      }
+        #
         data = self.safe_value(response, 'data')
         return self.parse_trades(data, market, since, limit)
 
     def parse_trade(self, trade, market=None):
+        #
+        # fetchTrades(public)
+        #
+        #      {
+        #          "id":220247666,
+        #          "price":"3098.62",
+        #          "volume":"0.00196",
+        #          "funds":"6.0732952",
+        #          "market":"ethusdt",
+        #          "created_at":"2022-04-19T19:03:15Z",
+        #          "created_on":1650394995,
+        #          "side":"bid"
+        #      }
+        #
         side = self.safe_value(trade, 'side')
         if side == 'bid':
             side = 'buy'
@@ -383,7 +500,9 @@ class oceanex(Exchange):
         timestamp = self.safe_timestamp(trade, 'created_on')
         if timestamp is None:
             timestamp = self.parse8601(self.safe_string(trade, 'created_at'))
-        return {
+        priceString = self.safe_string(trade, 'price')
+        amountString = self.safe_string(trade, 'volume')
+        return self.safe_trade({
             'info': trade,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
@@ -393,22 +512,32 @@ class oceanex(Exchange):
             'type': 'limit',
             'takerOrMaker': None,
             'side': side,
-            'price': self.safe_number(trade, 'price'),
-            'amount': self.safe_number(trade, 'volume'),
+            'price': priceString,
+            'amount': amountString,
             'cost': None,
             'fee': None,
-        }
+        }, market)
 
     def fetch_time(self, params={}):
+        """
+        fetches the current integer timestamp in milliseconds from the exchange server
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns int: the current integer timestamp in milliseconds from the exchange server
+        """
         response = self.publicGetTimestamp(params)
         #
         #     {"code":0,"message":"Operation successful","data":1559433420}
         #
         return self.safe_timestamp(response, 'data')
 
-    def fetch_all_trading_fees(self, params={}):
+    def fetch_trading_fees(self, params={}):
+        """
+        fetch the trading fees for multiple markets
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: a dictionary of `fee structures <https://docs.ccxt.com/en/latest/manual.html#fee-structure>` indexed by market symbols
+        """
         response = self.publicGetFeesTrading(params)
-        data = self.safe_value(response, 'data')
+        data = self.safe_value(response, 'data', [])
         result = {}
         for i in range(0, len(data)):
             group = data[i]
@@ -421,6 +550,7 @@ class oceanex(Exchange):
                 'symbol': symbol,
                 'maker': self.safe_number(maker, 'value'),
                 'taker': self.safe_number(taker, 'value'),
+                'percentage': True,
             }
         return result
 
@@ -430,7 +560,7 @@ class oceanex(Exchange):
 
     def parse_balance(self, response):
         data = self.safe_value(response, 'data')
-        balances = self.safe_value(data, 'accounts')
+        balances = self.safe_value(data, 'accounts', [])
         result = {'info': response}
         for i in range(0, len(balances)):
             balance = balances[i]
@@ -443,11 +573,26 @@ class oceanex(Exchange):
         return self.safe_balance(result)
 
     def fetch_balance(self, params={}):
+        """
+        query for balance and get the amount of funds available for trading or funds locked in orders
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: a `balance structure <https://docs.ccxt.com/en/latest/manual.html?#balance-structure>`
+        """
         self.load_markets()
         response = self.privateGetMembersMe(params)
         return self.parse_balance(response)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):
+        """
+        create a trade order
+        :param str symbol: unified symbol of the market to create an order in
+        :param str type: 'market' or 'limit'
+        :param str side: 'buy' or 'sell'
+        :param float amount: how much of currency you want to trade in units of base currency
+        :param float|None price: the price at which the order is to be fullfilled, in units of the quote currency, ignored in market orders
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: an `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -463,6 +608,12 @@ class oceanex(Exchange):
         return self.parse_order(data, market)
 
     def fetch_order(self, id, symbol=None, params={}):
+        """
+        fetches information on an order made by the user
+        :param str|None symbol: unified symbol of the market the order was made in
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         ids = id
         if not isinstance(id, list):
             ids = [id]
@@ -483,18 +634,42 @@ class oceanex(Exchange):
         return self.parse_order(data[0], market)
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetch all unfilled currently open orders
+        :param str symbol: unified market symbol
+        :param int|None since: the earliest time in ms to fetch open orders for
+        :param int|None limit: the maximum number of  open orders structures to retrieve
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         request = {
             'states': ['wait'],
         }
         return self.fetch_orders(symbol, since, limit, self.extend(request, params))
 
     def fetch_closed_orders(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetches information on multiple closed orders made by the user
+        :param str symbol: unified market symbol of the market orders were made in
+        :param int|None since: the earliest time in ms to fetch orders for
+        :param int|None limit: the maximum number of  orde structures to retrieve
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         request = {
             'states': ['done', 'cancel'],
         }
         return self.fetch_orders(symbol, since, limit, self.extend(request, params))
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
+        """
+        fetches information on multiple orders made by the user
+        :param str symbol: unified market symbol of the market orders were made in
+        :param int|None since: the earliest time in ms to fetch orders for
+        :param int|None limit: the maximum number of  orde structures to retrieve
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         if symbol is None:
             raise ArgumentsRequired(self.id + ' fetchOrders() requires a `symbol` argument')
         self.load_markets()
@@ -537,6 +712,15 @@ class oceanex(Exchange):
         ]
 
     def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
+        """
+        fetches historical candlestick data containing the open, high, low, and close price, and the volume of a market
+        :param str symbol: unified symbol of the market to fetch OHLCV data for
+        :param str timeframe: the length of time each candle represents
+        :param int|None since: timestamp in ms of the earliest candle to fetch
+        :param int|None limit: the maximum amount of candles to fetch
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns [[int]]: A list of candles ordered as timestamp, open, high, low, close, volume
+        """
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -625,25 +809,45 @@ class oceanex(Exchange):
         return self.parse_orders(data)
 
     def cancel_order(self, id, symbol=None, params={}):
+        """
+        cancels an open order
+        :param str id: order id
+        :param str|None symbol: not used by oceanex cancelOrder()
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         self.load_markets()
         response = self.privatePostOrderDelete(self.extend({'id': id}, params))
         data = self.safe_value(response, 'data')
         return self.parse_order(data)
 
     def cancel_orders(self, ids, symbol=None, params={}):
+        """
+        cancel multiple orders
+        :param [str] ids: order ids
+        :param str|None symbol: not used by oceanex cancelOrders()
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns dict: an list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         self.load_markets()
         response = self.privatePostOrderDeleteMulti(self.extend({'ids': ids}, params))
         data = self.safe_value(response, 'data')
         return self.parse_orders(data)
 
     def cancel_all_orders(self, symbol=None, params={}):
+        """
+        cancel all open orders
+        :param str|None symbol: unified market symbol, only orders in the market of self symbol are cancelled when symbol is not None
+        :param dict params: extra parameters specific to the oceanex api endpoint
+        :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         self.load_markets()
         response = self.privatePostOrdersClear(params)
         data = self.safe_value(response, 'data')
         return self.parse_orders(data)
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        url = self.urls['api'] + '/' + self.version + '/' + self.implode_params(path, params)
+        url = self.urls['api']['rest'] + '/' + self.version + '/' + self.implode_params(path, params)
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if path == 'tickers_multi' or path == 'order_book/multi':

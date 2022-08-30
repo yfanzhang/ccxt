@@ -7,6 +7,7 @@ from ccxt.async_support.base.exchange import Exchange
 import hashlib
 from ccxt.base.errors import ExchangeError
 from ccxt.base.errors import ArgumentsRequired
+from ccxt.base.decimal_to_precision import TICK_SIZE
 
 
 class coinspot(Exchange):
@@ -18,14 +19,50 @@ class coinspot(Exchange):
             'countries': ['AU'],  # Australia
             'rateLimit': 1000,
             'has': {
-                'cancelOrder': None,
                 'CORS': None,
+                'spot': True,
+                'margin': False,
+                'swap': False,
+                'future': False,
+                'option': False,
+                'addMargin': False,
+                'cancelOrder': True,
                 'createMarketOrder': None,
                 'createOrder': True,
+                'createReduceOnlyOrder': False,
+                'createStopLimitOrder': False,
+                'createStopMarketOrder': False,
+                'createStopOrder': False,
                 'fetchBalance': True,
+                'fetchBorrowRate': False,
+                'fetchBorrowRateHistories': False,
+                'fetchBorrowRateHistory': False,
+                'fetchBorrowRates': False,
+                'fetchBorrowRatesPerSymbol': False,
+                'fetchFundingHistory': False,
+                'fetchFundingRate': False,
+                'fetchFundingRateHistory': False,
+                'fetchFundingRates': False,
+                'fetchIndexOHLCV': False,
+                'fetchLeverage': False,
+                'fetchLeverageTiers': False,
+                'fetchMarginMode': False,
+                'fetchMarkOHLCV': False,
+                'fetchOpenInterestHistory': False,
                 'fetchOrderBook': True,
+                'fetchPosition': False,
+                'fetchPositionMode': False,
+                'fetchPositions': False,
+                'fetchPositionsRisk': False,
+                'fetchPremiumIndexOHLCV': False,
                 'fetchTicker': True,
                 'fetchTrades': True,
+                'fetchTradingFee': False,
+                'fetchTradingFees': False,
+                'reduceMargin': False,
+                'setLeverage': False,
+                'setMarginMode': False,
+                'setPositionMode': False,
             },
             'urls': {
                 'logo': 'https://user-images.githubusercontent.com/1294454/28208429-3cacdf9a-6896-11e7-854e-4c79a772a30f.jpg',
@@ -94,6 +131,7 @@ class coinspot(Exchange):
             'options': {
                 'fetchBalance': 'private_post_my_balances',
             },
+            'precisionMode': TICK_SIZE,
         })
 
     def parse_balance(self, response):
@@ -121,6 +159,11 @@ class coinspot(Exchange):
         return self.safe_balance(result)
 
     async def fetch_balance(self, params={}):
+        """
+        query for balance and get the amount of funds available for trading or funds locked in orders
+        :param dict params: extra parameters specific to the coinspot api endpoint
+        :returns dict: a `balance structure <https://docs.ccxt.com/en/latest/manual.html?#balance-structure>`
+        """
         await self.load_markets()
         method = self.safe_string(self.options, 'fetchBalance', 'private_post_my_balances')
         response = await getattr(self, method)(params)
@@ -143,31 +186,43 @@ class coinspot(Exchange):
         return self.parse_balance(response)
 
     async def fetch_order_book(self, symbol, limit=None, params={}):
+        """
+        fetches information on open orders with bid(buy) and ask(sell) prices, volumes and other data
+        :param str symbol: unified symbol of the market to fetch the order book for
+        :param int|None limit: the maximum amount of order book entries to return
+        :param dict params: extra parameters specific to the coinspot api endpoint
+        :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/en/latest/manual.html#order-book-structure>` indexed by market symbols
+        """
         await self.load_markets()
         market = self.market(symbol)
         request = {
             'cointype': market['id'],
         }
         orderbook = await self.privatePostOrders(self.extend(request, params))
-        return self.parse_order_book(orderbook, symbol, None, 'buyorders', 'sellorders', 'rate', 'amount')
+        return self.parse_order_book(orderbook, market['symbol'], None, 'buyorders', 'sellorders', 'rate', 'amount')
 
-    async def fetch_ticker(self, symbol, params={}):
-        await self.load_markets()
-        response = await self.publicGetLatest(params)
-        id = self.market_id(symbol)
-        id = id.lower()
-        ticker = response['prices'][id]
+    def parse_ticker(self, ticker, market=None):
+        #
+        #     {
+        #         "btc":{
+        #             "bid":"51970",
+        #             "ask":"53000",
+        #             "last":"52806.47"
+        #         }
+        #     }
+        #
+        symbol = self.safe_symbol(None, market)
         timestamp = self.milliseconds()
-        last = self.safe_number(ticker, 'last')
-        return {
+        last = self.safe_string(ticker, 'last')
+        return self.safe_ticker({
             'symbol': symbol,
             'timestamp': timestamp,
             'datetime': self.iso8601(timestamp),
             'high': None,
             'low': None,
-            'bid': self.safe_number(ticker, 'bid'),
+            'bid': self.safe_string(ticker, 'bid'),
             'bidVolume': None,
-            'ask': self.safe_number(ticker, 'ask'),
+            'ask': self.safe_string(ticker, 'ask'),
             'askVolume': None,
             'vwap': None,
             'open': None,
@@ -180,9 +235,45 @@ class coinspot(Exchange):
             'baseVolume': None,
             'quoteVolume': None,
             'info': ticker,
-        }
+        }, market)
+
+    async def fetch_ticker(self, symbol, params={}):
+        """
+        fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific market
+        :param str symbol: unified symbol of the market to fetch the ticker for
+        :param dict params: extra parameters specific to the coinspot api endpoint
+        :returns dict: a `ticker structure <https://docs.ccxt.com/en/latest/manual.html#ticker-structure>`
+        """
+        await self.load_markets()
+        market = self.market(symbol)
+        response = await self.publicGetLatest(params)
+        id = market['id']
+        id = id.lower()
+        prices = self.safe_value(response, 'prices')
+        #
+        #     {
+        #         "status":"ok",
+        #         "prices":{
+        #             "btc":{
+        #                 "bid":"52732.47000022",
+        #                 "ask":"53268.0699976",
+        #                 "last":"53284.03"
+        #             }
+        #         }
+        #     }
+        #
+        ticker = self.safe_value(prices, id)
+        return self.parse_ticker(ticker, market)
 
     async def fetch_trades(self, symbol, since=None, limit=None, params={}):
+        """
+        get the list of most recent trades for a particular symbol
+        :param str symbol: unified symbol of the market to fetch trades for
+        :param int|None since: timestamp in ms of the earliest trade to fetch
+        :param int|None limit: the maximum amount of trades to fetch
+        :param dict params: extra parameters specific to the coinspot api endpoint
+        :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
+        """
         await self.load_markets()
         market = self.market(symbol)
         request = {
@@ -236,18 +327,36 @@ class coinspot(Exchange):
         }, market)
 
     async def create_order(self, symbol, type, side, amount, price=None, params={}):
+        """
+        create a trade order
+        :param str symbol: unified symbol of the market to create an order in
+        :param str type: 'market' or 'limit'
+        :param str side: 'buy' or 'sell'
+        :param float amount: how much of currency you want to trade in units of base currency
+        :param float|None price: the price at which the order is to be fullfilled, in units of the quote currency, ignored in market orders
+        :param dict params: extra parameters specific to the coinspot api endpoint
+        :returns dict: an `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         await self.load_markets()
         method = 'privatePostMy' + self.capitalize(side)
         if type == 'market':
-            raise ExchangeError(self.id + ' allows limit orders only')
+            raise ExchangeError(self.id + ' createOrder() allows limit orders only')
+        market = self.market(symbol)
         request = {
-            'cointype': self.market_id(symbol),
+            'cointype': market['id'],
             'amount': amount,
             'rate': price,
         }
         return await getattr(self, method)(self.extend(request, params))
 
     async def cancel_order(self, id, symbol=None, params={}):
+        """
+        cancels an open order
+        :param str id: order id
+        :param str|None symbol: not used by coinspot cancelOrder()
+        :param dict params: extra parameters specific to the coinspot api endpoint
+        :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
+        """
         side = self.safe_string(params, 'side')
         if side != 'buy' and side != 'sell':
             raise ArgumentsRequired(self.id + ' cancelOrder() requires a side parameter, "buy" or "sell"')

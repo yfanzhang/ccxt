@@ -8,11 +8,12 @@ namespace ccxt\async;
 use Exception; // a common import
 use \ccxt\ExchangeError;
 use \ccxt\InvalidOrder;
+use \ccxt\Precise;
 
 class qtrade extends Exchange {
 
     public function describe() {
-        return $this->deep_extend(parent::describe (), array(
+        return $this->deep_extend(parent::describe(), array(
             'id' => 'qtrade',
             'name' => 'qTrade',
             'countries' => array( 'US' ),
@@ -20,35 +21,77 @@ class qtrade extends Exchange {
             'version' => 'v1',
             'urls' => array(
                 'logo' => 'https://user-images.githubusercontent.com/51840849/80491487-74a99c00-896b-11ea-821e-d307e832f13e.jpg',
-                'api' => 'https://api.qtrade.io',
+                'api' => array(
+                    'rest' => 'https://api.qtrade.io',
+                ),
                 'www' => 'https://qtrade.io',
                 'doc' => 'https://qtrade-exchange.github.io/qtrade-docs',
                 'referral' => 'https://qtrade.io/?ref=BKOQWVFGRH2C',
+                'fees' => 'https://qtrade.io/fees',
             ),
             'has' => array(
-                'cancelOrder' => true,
                 'CORS' => null,
+                'spot' => true,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
+                'addMargin' => false,
+                'cancelOrder' => true,
                 'createMarketOrder' => null,
                 'createOrder' => true,
+                'createReduceOnlyOrder' => false,
+                'createStopLimitOrder' => false,
+                'createStopMarketOrder' => false,
+                'createStopOrder' => false,
                 'fetchBalance' => true,
+                'fetchBorrowRate' => false,
+                'fetchBorrowRateHistories' => false,
+                'fetchBorrowRateHistory' => false,
+                'fetchBorrowRates' => false,
+                'fetchBorrowRatesPerSymbol' => false,
                 'fetchClosedOrders' => true,
                 'fetchCurrencies' => true,
                 'fetchDeposit' => true,
                 'fetchDepositAddress' => true,
                 'fetchDeposits' => true,
+                'fetchFundingHistory' => false,
+                'fetchFundingRate' => false,
+                'fetchFundingRateHistory' => false,
+                'fetchFundingRates' => false,
+                'fetchIndexOHLCV' => false,
+                'fetchLeverage' => false,
+                'fetchLeverageTiers' => false,
+                'fetchMarginMode' => false,
                 'fetchMarkets' => true,
+                'fetchMarkOHLCV' => false,
                 'fetchMyTrades' => true,
                 'fetchOHLCV' => true,
+                'fetchOpenInterestHistory' => false,
                 'fetchOpenOrders' => true,
                 'fetchOrder' => true,
                 'fetchOrderBook' => true,
                 'fetchOrders' => true,
+                'fetchPosition' => false,
+                'fetchPositionMode' => false,
+                'fetchPositions' => false,
+                'fetchPositionsRisk' => false,
+                'fetchPremiumIndexOHLCV' => false,
                 'fetchTicker' => true,
                 'fetchTickers' => true,
                 'fetchTrades' => true,
+                'fetchTradingFee' => true,
+                'fetchTradingFees' => false,
                 'fetchTransactions' => null,
+                'fetchTransfer' => false,
+                'fetchTransfers' => true,
                 'fetchWithdrawal' => true,
                 'fetchWithdrawals' => true,
+                'reduceMargin' => false,
+                'setLeverage' => false,
+                'setMarginMode' => false,
+                'setPositionMode' => false,
+                'transfer' => false,
                 'withdraw' => true,
             ),
             'timeframes' => array(
@@ -104,8 +147,8 @@ class qtrade extends Exchange {
                     'feeSide' => 'quote',
                     'tierBased' => true,
                     'percentage' => true,
-                    'taker' => 0.005,
-                    'maker' => 0.0,
+                    'taker' => $this->parse_number('0.005'),
+                    'maker' => $this->parse_number('0.0'),
                 ),
                 'funding' => array(
                     'withdraw' => array(),
@@ -114,6 +157,7 @@ class qtrade extends Exchange {
             'commonCurrencies' => array(
                 'BTM' => 'Bitmark',
             ),
+            'precisionMode' => TICK_SIZE,
             'exceptions' => array(
                 'exact' => array(
                     'invalid_auth' => '\\ccxt\\AuthenticationError',
@@ -127,6 +171,11 @@ class qtrade extends Exchange {
     }
 
     public function fetch_markets($params = array ()) {
+        /**
+         * retrieves $data on all $markets for qtrade
+         * @param {array} $params extra parameters specific to the exchange api endpoint
+         * @return {[array]} an array of objects representing $market $data
+         */
         $response = yield $this->publicGetMarkets ($params);
         //
         //     {
@@ -153,8 +202,8 @@ class qtrade extends Exchange {
         //                     "market_string":"BAC_BTC",
         //                     "minimum_sell_amount":"0.0001",
         //                     "minimum_buy_value":"0.0001",
-        //                     "market_precision":8,
-        //                     "base_precision":8
+        //                     "market_precision":8, // note, they have reversed understanding of 'quote' vs 'base' concepts
+        //                     "base_precision":8 // as noted in above comment
         //                 ),
         //             ),
         //         }
@@ -171,29 +220,45 @@ class qtrade extends Exchange {
             $quoteId = $this->safe_string($market, 'base_currency');
             $base = $this->safe_currency_code($baseId);
             $quote = $this->safe_currency_code($quoteId);
-            $symbol = $base . '/' . $quote;
-            $precision = array(
-                'amount' => $this->safe_integer($market, 'market_precision'),
-                'price' => $this->safe_integer($market, 'base_precision'),
-            );
             $canView = $this->safe_value($market, 'can_view', false);
             $canTrade = $this->safe_value($market, 'can_trade', false);
             $active = $canTrade && $canView;
             $result[] = array(
-                'symbol' => $symbol,
                 'id' => $marketId,
                 'numericId' => $numericId,
-                'baseId' => $baseId,
-                'quoteId' => $quoteId,
+                'symbol' => $base . '/' . $quote,
                 'base' => $base,
                 'quote' => $quote,
+                'settle' => null,
+                'baseId' => $baseId,
+                'quoteId' => $quoteId,
+                'settleId' => null,
                 'type' => 'spot',
                 'spot' => true,
+                'margin' => false,
+                'swap' => false,
+                'future' => false,
+                'option' => false,
                 'active' => $active,
-                'precision' => $precision,
+                'contract' => false,
+                'linear' => null,
+                'inverse' => null,
                 'taker' => $this->safe_number($market, 'taker_fee'),
                 'maker' => $this->safe_number($market, 'maker_fee'),
+                'contractSize' => null,
+                'expiry' => null,
+                'expiryDatetime' => null,
+                'strike' => null,
+                'optionType' => null,
+                'precision' => array(
+                    'amount' => $this->parse_number($this->parse_precision($this->safe_string($market, 'market_precision'))),
+                    'price' => $this->parse_number($this->parse_precision($this->safe_string($market, 'base_precision'))),
+                ),
                 'limits' => array(
+                    'leverage' => array(
+                        'min' => null,
+                        'max' => null,
+                    ),
                     'amount' => array(
                         'min' => $this->safe_number($market, 'minimum_sell_value'),
                         'max' => null,
@@ -214,6 +279,11 @@ class qtrade extends Exchange {
     }
 
     public function fetch_currencies($params = array ()) {
+        /**
+         * fetches all available $currencies on an exchange
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} an associative dictionary of $currencies
+         */
         $response = yield $this->publicGetCurrencies ($params);
         //
         //     {
@@ -266,10 +336,13 @@ class qtrade extends Exchange {
             $name = $this->safe_string($currency, 'long_name');
             $type = $this->safe_string($currency, 'type');
             $canWithdraw = $this->safe_value($currency, 'can_withdraw', true);
+            $withdrawDisabled = $this->safe_value($currency, 'withdraw_disabled', false);
             $depositDisabled = $this->safe_value($currency, 'deposit_disabled', false);
+            $deposit = !$depositDisabled;
+            $withdraw = $canWithdraw && !$withdrawDisabled;
             $config = $this->safe_value($currency, 'config', array());
             $status = $this->safe_string($currency, 'status');
-            $active = $canWithdraw && ($status === 'ok') && !$depositDisabled;
+            $active = $withdraw && $deposit && ($status === 'ok');
             $result[$code] = array(
                 'id' => $id,
                 'code' => $code,
@@ -277,8 +350,10 @@ class qtrade extends Exchange {
                 'type' => $type,
                 'name' => $name,
                 'fee' => $this->safe_number($config, 'withdraw_fee'),
-                'precision' => $this->safe_integer($currency, 'precision'),
+                'precision' => $this->parse_number($this->parse_precision($this->safe_string($currency, 'precision'))),
                 'active' => $active,
+                'deposit' => $deposit,
+                'withdraw' => $withdraw,
                 'limits' => array(
                     'amount' => array(
                         'min' => $this->safe_number($currency, 'minimum_order'),
@@ -317,6 +392,15 @@ class qtrade extends Exchange {
     }
 
     public function fetch_ohlcv($symbol, $timeframe = '5m', $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches historical candlestick $data containing the open, high, low, and close price, and the volume of a $market
+         * @param {string} $symbol unified $symbol of the $market to fetch OHLCV $data for
+         * @param {string} $timeframe the length of time each candle represents
+         * @param {int|null} $since timestamp in ms of the earliest candle to fetch
+         * @param {int|null} $limit the maximum amount of candles to fetch
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[[int]]} A list of candles ordered as timestamp, open, high, low, close, volume
+         */
         yield $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -341,9 +425,16 @@ class qtrade extends Exchange {
     }
 
     public function fetch_order_book($symbol, $limit = null, $params = array ()) {
+        /**
+         * fetches information on open orders with bid (buy) and ask (sell) $prices, volumes and other $data
+         * @param {string} $symbol unified $symbol of the $market to fetch the order book for
+         * @param {int|null} $limit the maximum $amount of order book entries to return
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} A dictionary of {@link https://docs.ccxt.com/en/latest/manual.html#order-book-structure order book structures} indexed by $market symbols
+         */
         yield $this->load_markets();
-        $marketId = $this->market_id($symbol);
-        $request = array( 'market_string' => $marketId );
+        $market = $this->market($symbol);
+        $request = array( 'market_string' => $market['id'] );
         $response = yield $this->publicGetOrderbookMarketString (array_merge($request, $params));
         //
         //     {
@@ -381,7 +472,7 @@ class qtrade extends Exchange {
             $orderbook[$side] = $result;
         }
         $timestamp = $this->safe_integer_product($data, 'last_change', 0.001);
-        return $this->parse_order_book($orderbook, $symbol, $timestamp);
+        return $this->parse_order_book($orderbook, $market['symbol'], $timestamp);
     }
 
     public function parse_ticker($ticker, $market = null) {
@@ -407,32 +498,25 @@ class qtrade extends Exchange {
         $marketId = $this->safe_string($ticker, 'id_hr');
         $symbol = $this->safe_symbol($marketId, $market, '_');
         $timestamp = $this->safe_integer_product($ticker, 'last_change', 0.001);
-        $previous = $this->safe_number($ticker, 'day_open');
-        $last = $this->safe_number($ticker, 'last');
-        $day_change = $this->safe_number($ticker, 'day_change');
-        $percentage = null;
-        $change = null;
-        $average = $this->safe_number($ticker, 'day_avg_price');
-        if ($day_change !== null) {
-            $percentage = $day_change * 100;
-            if ($previous !== null) {
-                $change = $day_change * $previous;
-            }
-        }
-        $baseVolume = $this->safe_number($ticker, 'day_volume_market');
-        $quoteVolume = $this->safe_number($ticker, 'day_volume_base');
-        $vwap = $this->vwap($baseVolume, $quoteVolume);
+        $previous = $this->safe_string($ticker, 'day_open');
+        $last = $this->safe_string($ticker, 'last');
+        $day_change = $this->safe_string($ticker, 'day_change');
+        $average = $this->safe_string($ticker, 'day_avg_price');
+        $baseVolume = $this->safe_string($ticker, 'day_volume_market');
+        $quoteVolume = $this->safe_string($ticker, 'day_volume_base');
+        $percentage = Precise::string_mul($day_change, '100');
+        $change = Precise::string_mul($day_change, $previous);
         return $this->safe_ticker(array(
             'symbol' => $symbol,
             'timestamp' => $timestamp,
             'datetime' => $this->iso8601($timestamp),
-            'high' => $this->safe_number($ticker, 'day_high'),
-            'low' => $this->safe_number($ticker, 'day_low'),
-            'bid' => $this->safe_number($ticker, 'bid'),
+            'high' => $this->safe_string($ticker, 'day_high'),
+            'low' => $this->safe_string($ticker, 'day_low'),
+            'bid' => $this->safe_string($ticker, 'bid'),
             'bidVolume' => null,
-            'ask' => $this->safe_number($ticker, 'ask'),
+            'ask' => $this->safe_string($ticker, 'ask'),
             'askVolume' => null,
-            'vwap' => $vwap,
+            'vwap' => null,
             'open' => $previous,
             'close' => $last,
             'last' => $last,
@@ -447,7 +531,14 @@ class qtrade extends Exchange {
     }
 
     public function fetch_tickers($symbols = null, $params = array ()) {
+        /**
+         * fetches price $tickers for multiple markets, statistical calculations with the information calculated over the past 24 hours each market
+         * @param {[string]|null} $symbols unified $symbols of the markets to fetch the $ticker for, all market $tickers are returned if not assigned
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} an array of {@link https://docs.ccxt.com/en/latest/manual.html#$ticker-structure $ticker structures}
+         */
         yield $this->load_markets();
+        $symbols = $this->market_symbols($symbols);
         $response = yield $this->publicGetTickers ($params);
         //
         //     {
@@ -484,6 +575,12 @@ class qtrade extends Exchange {
     }
 
     public function fetch_ticker($symbol, $params = array ()) {
+        /**
+         * fetches a price ticker, a statistical calculation with the information calculated over the past 24 hours for a specific $market
+         * @param {string} $symbol unified $symbol of the $market to fetch the ticker for
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#ticker-structure ticker structure}
+         */
         yield $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -514,6 +611,14 @@ class qtrade extends Exchange {
     }
 
     public function fetch_trades($symbol, $since = null, $limit = null, $params = array ()) {
+        /**
+         * get the list of most recent $trades for a particular $symbol
+         * @param {string} $symbol unified $symbol of the $market to fetch $trades for
+         * @param {int|null} $since timestamp in ms of the earliest trade to fetch
+         * @param {int|null} $limit the maximum amount of $trades to fetch
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of ~@link https://docs.ccxt.com/en/latest/manual.html?#public-$trades trade structures~
+         */
         yield $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
@@ -546,6 +651,14 @@ class qtrade extends Exchange {
     }
 
     public function fetch_my_trades($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all $trades made by the user
+         * @param {string|null} $symbol unified $market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch $trades for
+         * @param {int|null} $limit the maximum number of $trades structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#trade-structure trade structures}
+         */
         yield $this->load_markets();
         $request = array(
             'desc' => true, // Returns newest $trades first when true
@@ -556,7 +669,7 @@ class qtrade extends Exchange {
         $numericId = $this->safe_value($params, 'market_id');
         if ($numericId !== null) {
             $request['market_id'] = $numericId; // mutually exclusive with market_string
-        } else if ($symbol !== null) {
+        } elseif ($symbol !== null) {
             $market = $this->market($symbol);
             $request['market_string'] = $market['id'];
         }
@@ -670,6 +783,54 @@ class qtrade extends Exchange {
         ), $market);
     }
 
+    public function fetch_trading_fee($symbol, $params = array ()) {
+        /**
+         * fetch the trading fees for a $market
+         * @param {string} $symbol unified $market $symbol
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#fee-structure fee structure}
+         */
+        yield $this->load_markets();
+        $market = $this->market($symbol);
+        $request = array(
+            'market_string' => $market['id'],
+        );
+        $response = yield $this->publicGetMarketMarketString (array_merge($request, $params));
+        //
+        //     {
+        //         $data => {
+        //             $market => array(
+        //                 id => '41',
+        //                 market_currency => 'ETH',
+        //                 base_currency => 'BTC',
+        //                 maker_fee => '0',
+        //                 taker_fee => '0.005',
+        //                 metadata => array(),
+        //                 can_trade => true,
+        //                 can_cancel => true,
+        //                 can_view => true,
+        //                 market_string => 'ETH_BTC',
+        //                 minimum_sell_amount => '0.001',
+        //                 minimum_buy_value => '0.0001',
+        //                 market_precision => '18',
+        //                 base_precision => '8'
+        //             ),
+        //             recent_trades => array()
+        //         }
+        //     }
+        //
+        $data = $this->safe_value($response, 'data', array());
+        $marketData = $this->safe_value($data, 'market', array());
+        return array(
+            'info' => $marketData,
+            'symbol' => $market['symbol'],
+            'maker' => $this->safe_number($marketData, 'maker_fee'),
+            'taker' => $this->safe_number($marketData, 'taker_fee'),
+            'percentage' => true,
+            'tierBased' => true,
+        );
+    }
+
     public function parse_balance($response) {
         $data = $this->safe_value($response, 'data', array());
         $balances = $this->safe_value($data, 'balances', array());
@@ -700,6 +861,11 @@ class qtrade extends Exchange {
     }
 
     public function fetch_balance($params = array ()) {
+        /**
+         * query for balance and get the amount of funds available for trading or funds locked in orders
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} a ~@link https://docs.ccxt.com/en/latest/manual.html?#balance-structure balance structure~
+         */
         yield $this->load_markets();
         $response = yield $this->privateGetBalancesAll ($params);
         //
@@ -721,15 +887,25 @@ class qtrade extends Exchange {
     }
 
     public function create_order($symbol, $type, $side, $amount, $price = null, $params = array ()) {
+        /**
+         * create a trade $order
+         * @param {string} $symbol unified $symbol of the $market to create an $order in
+         * @param {string} $type 'market' or 'limit'
+         * @param {string} $side 'buy' or 'sell'
+         * @param {float} $amount how much of currency you want to trade in units of base currency
+         * @param {float|null} $price the $price at which the $order is to be fullfilled, in units of the quote currency, ignored in $market orders
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} an {@link https://docs.ccxt.com/en/latest/manual.html#$order-structure $order structure}
+         */
         if ($type !== 'limit') {
             throw new InvalidOrder($this->id . ' createOrder() allows limit orders only');
         }
         yield $this->load_markets();
         $market = $this->market($symbol);
         $request = array(
-            'amount' => $this->amount_to_precision($symbol, $amount),
+            'amount' => $this->amount_to_precision($market['symbol'], $amount),
             'market_id' => $market['numericId'],
-            'price' => $this->price_to_precision($symbol, $price),
+            'price' => $this->price_to_precision($market['symbol'], $price),
         );
         $method = ($side === 'sell') ? 'privatePostSellLimit' : 'privatePostBuyLimit';
         $response = yield $this->$method (array_merge($request, $params));
@@ -854,7 +1030,7 @@ class qtrade extends Exchange {
         $status = null;
         if ($open) {
             $status = 'open';
-        } else if ($closeReason === 'canceled') {
+        } elseif ($closeReason === 'canceled') {
             $status = 'canceled';
         } else {
             $status = 'closed';
@@ -890,6 +1066,13 @@ class qtrade extends Exchange {
     }
 
     public function cancel_order($id, $symbol = null, $params = array ()) {
+        /**
+         * cancels an open order
+         * @param {string} $id order $id
+         * @param {string|null} $symbol not used by qtrade cancelOrder ()
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structure}
+         */
         $request = array(
             'id' => intval($id),
         );
@@ -898,6 +1081,12 @@ class qtrade extends Exchange {
     }
 
     public function fetch_order($id, $symbol = null, $params = array ()) {
+        /**
+         * fetches information on an $order made by the user
+         * @param {string|null} $symbol not used by qtrade fetchOrder
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} An {@link https://docs.ccxt.com/en/latest/manual.html#$order-structure $order structure}
+         */
         yield $this->load_markets();
         $request = array( 'order_id' => $id );
         $response = yield $this->privateGetOrderOrderId (array_merge($request, $params));
@@ -935,6 +1124,14 @@ class qtrade extends Exchange {
     }
 
     public function fetch_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches information on multiple $orders made by the user
+         * @param {string|null} $symbol unified $market $symbol of the $market $orders were made in
+         * @param {int|null} $since the earliest time in ms to fetch $orders for
+         * @param {int|null} $limit the maximum number of  orde structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         yield $this->load_markets();
         $request = array(
             // 'open' => true,
@@ -945,7 +1142,7 @@ class qtrade extends Exchange {
         $numericId = $this->safe_value($params, 'market_id');
         if ($numericId !== null) {
             $request['market_id'] = $numericId; // mutually exclusive with market_string
-        } else if ($symbol !== null) {
+        } elseif ($symbol !== null) {
             $market = $this->market($symbol);
             $request['market_string'] = $market['id'];
         }
@@ -986,11 +1183,27 @@ class qtrade extends Exchange {
     }
 
     public function fetch_open_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all unfilled currently open orders
+         * @param {string|null} $symbol unified market $symbol
+         * @param {int|null} $since the earliest time in ms to fetch open orders for
+         * @param {int|null} $limit the maximum number of  open orders structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $request = array( 'open' => true );
         return yield $this->fetch_orders($symbol, $since, $limit, array_merge($request, $params));
     }
 
     public function fetch_closed_orders($symbol = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetches information on multiple closed orders made by the user
+         * @param {string|null} $symbol unified market $symbol of the market orders were made in
+         * @param {int|null} $since the earliest time in ms to fetch orders for
+         * @param {int|null} $limit the maximum number of  orde structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#order-structure order structures}
+         */
         $request = array( 'open' => false );
         return yield $this->fetch_orders($symbol, $since, $limit, array_merge($request, $params));
     }
@@ -1029,6 +1242,12 @@ class qtrade extends Exchange {
     }
 
     public function fetch_deposit_address($code, $params = array ()) {
+        /**
+         * fetch the deposit address for a $currency associated with this account
+         * @param {string} $code unified $currency $code
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} an {@link https://docs.ccxt.com/en/latest/manual.html#address-structure address structure}
+         */
         yield $this->load_markets();
         $currency = $this->currency($code);
         $request = array(
@@ -1056,6 +1275,13 @@ class qtrade extends Exchange {
     }
 
     public function fetch_deposit($id, $code = null, $params = array ()) {
+        /**
+         * fetch information on a $deposit
+         * @param {string} $id $deposit $id
+         * @param {string|null} $code not used by qtrade fetchDeposit ()
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structure}
+         */
         yield $this->load_markets();
         $request = array(
             'deposit_id' => $id,
@@ -1106,6 +1332,14 @@ class qtrade extends Exchange {
     }
 
     public function fetch_deposits($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all $deposits made to an account
+         * @param {string|null} $code unified $currency $code
+         * @param {int|null} $since the earliest time in ms to fetch $deposits for
+         * @param {int|null} $limit the maximum number of $deposits structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
         yield $this->load_markets();
         $currency = null;
         if ($code !== null) {
@@ -1159,7 +1393,84 @@ class qtrade extends Exchange {
         return $this->parse_transactions($deposits, $currency, $since, $limit);
     }
 
+    public function fetch_transfers($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch a history of internal $transfers made on an account
+         * @param {string|null} $code unified $currency $code of the $currency transferred
+         * @param {int|null} $since the earliest time in ms to fetch $transfers for
+         * @param {int|null} $limit the maximum number of  $transfers structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transfer-structure transfer structures}
+         */
+        yield $this->load_markets();
+        $currency = null;
+        if ($code !== null) {
+            $currency = $this->currency($code);
+        }
+        $response = yield $this->privateGetTransfers ($params);
+        //
+        //     {
+        //         "data" => {
+        //             "transfers" => array(
+        //                 {
+        //                     "amount" => "0.5",
+        //                     "created_at" => "2018-12-10T00:06:41.066665Z",
+        //                     "currency" => "BTC",
+        //                     "id" => 9,
+        //                     "reason_code" => "referral_payout",
+        //                     "reason_metadata" => array(
+        //                         "note" => "January referral earnings"
+        //                     ),
+        //                     "sender_email" => "qtrade",
+        //                     "sender_id" => 218
+        //                 }
+        //             )
+        //         }
+        //     }
+        //
+        $data = $this->safe_value($response, 'data', array());
+        $transfers = $this->safe_value($data, 'transfers', array());
+        return $this->parse_transfers($transfers, $currency, $since, $limit);
+    }
+
+    public function parse_transfer($transfer, $currency = null) {
+        //
+        //     {
+        //         "amount" => "0.5",
+        //         "created_at" => "2018-12-10T00:06:41.066665Z",
+        //         "currency" => "BTC",
+        //         "id" => 9,
+        //         "reason_code" => "referral_payout",
+        //         "reason_metadata" => array(
+        //             "note" => "January referral earnings"
+        //         ),
+        //         "sender_email" => "qtrade",
+        //         "sender_id" => 218
+        //     }
+        //
+        $currencyId = $this->safe_string($transfer, 'currency');
+        $dateTime = $this->safe_string($transfer, 'created_at');
+        return array(
+            'info' => $transfer,
+            'id' => $this->safe_string($transfer, 'id'),
+            'timestamp' => $this->parse8601($dateTime),
+            'datetime' => $dateTime,
+            'currency' => $this->safe_currency_code($currencyId, $currency),
+            'amount' => $this->safe_number($transfer, 'amount'),
+            'fromAccount' => $this->safe_string($transfer, 'sender_id'),
+            'toAccount' => null,
+            'status' => 'ok',
+        );
+    }
+
     public function fetch_withdrawal($id, $code = null, $params = array ()) {
+        /**
+         * fetch $data on a currency $withdrawal via the $withdrawal $id
+         * @param {string} $id $withdrawal $id
+         * @param {string|null} $code not used by qtrade.fetchWithdrawal
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structure}
+         */
         yield $this->load_markets();
         $request = array(
             'withdraw_id' => $id,
@@ -1207,6 +1518,14 @@ class qtrade extends Exchange {
     }
 
     public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
+        /**
+         * fetch all $withdrawals made from an account
+         * @param {string|null} $code unified $currency $code
+         * @param {int|null} $since the earliest time in ms to fetch $withdrawals for
+         * @param {int|null} $limit the maximum number of $withdrawals structures to retrieve
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {[array]} a list of {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structures}
+         */
         yield $this->load_markets();
         $currency = null;
         if ($code !== null) {
@@ -1345,7 +1664,7 @@ class qtrade extends Exchange {
         $tag = null;
         if ($address !== null) {
             $parts = explode(':', $address);
-            $numParts = is_array($parts) ? count($parts) : 0;
+            $numParts = count($parts);
             if ($numParts > 1) {
                 $address = $this->safe_string($parts, 0);
                 $tag = $this->safe_string($parts, 1);
@@ -1363,7 +1682,7 @@ class qtrade extends Exchange {
         $statusCode = $this->safe_string($transaction, 'code');
         if ($cancelRequested) {
             $status = 'canceled';
-        } else if ($status === null) {
+        } elseif ($status === null) {
             $status = $this->parse_transaction_status($statusCode);
         }
         $fee = null;
@@ -1400,6 +1719,15 @@ class qtrade extends Exchange {
     }
 
     public function withdraw($code, $amount, $address, $tag = null, $params = array ()) {
+        /**
+         * make a withdrawal
+         * @param {string} $code unified $currency $code
+         * @param {float} $amount the $amount to withdraw
+         * @param {string} $address the $address to withdraw to
+         * @param {string|null} $tag
+         * @param {array} $params extra parameters specific to the qtrade api endpoint
+         * @return {array} a {@link https://docs.ccxt.com/en/latest/manual.html#transaction-structure transaction structure}
+         */
         list($tag, $params) = $this->handle_withdraw_tag_and_params($tag, $params);
         yield $this->load_markets();
         $currency = $this->currency($code);
@@ -1473,7 +1801,7 @@ class qtrade extends Exchange {
                 $headers['Content-Type'] = 'application/json';
             }
         }
-        $url = $this->urls['api'] . $url;
+        $url = $this->urls['api']['rest'] . $url;
         return array( 'url' => $url, 'method' => $method, 'body' => $body, 'headers' => $headers );
     }
 
@@ -1486,7 +1814,7 @@ class qtrade extends Exchange {
             return;
         }
         $errors = $this->safe_value($response, 'errors', array());
-        $numErrors = is_array($errors) ? count($errors) : 0;
+        $numErrors = count($errors);
         if ($numErrors < 1) {
             return;
         }
