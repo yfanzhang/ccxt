@@ -6,6 +6,7 @@
 from ccxt.async_support.base.exchange import Exchange
 import hashlib
 from ccxt.base.errors import ExchangeError
+from ccxt.base.errors import PermissionDenied
 from ccxt.base.errors import ArgumentsRequired
 from ccxt.base.errors import BadRequest
 from ccxt.base.errors import BadSymbol
@@ -209,6 +210,7 @@ class mexc3(Exchange):
                             'order': 1,
                             'openOrders': 1,
                             'sub-account/apiKey': 1,
+                            'margin/openOrders': 1,
                         },
                     },
                 },
@@ -448,6 +450,7 @@ class mexc3(Exchange):
                     '2003': InvalidOrder,
                     '2005': InsufficientFunds,
                     '600': BadRequest,
+                    '70011': PermissionDenied,  # {"code":70011,"msg":"Pair user ban trade apikey."}
                     '88004': InsufficientFunds,  # {"msg":"超出最大可借，最大可借币为:18.09833211","code":88004}
                     '88009': ExchangeError,  # v3 {"msg":"Loan record does not exist","code":88009}
                     '88013': InvalidOrder,  # {"msg":"最小交易额不能小于：5USDT","code":88013}
@@ -711,6 +714,11 @@ class mexc3(Exchange):
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
             status = self.safe_string(market, 'status')
+            isSpotTradingAllowed = self.safe_value(market, 'isSpotTradingAllowed')
+            active = False
+            if (status == 'ENABLED') and (isSpotTradingAllowed):
+                active = True
+            isMarginTradingAllowed = self.safe_value(market, 'isMarginTradingAllowed')
             makerCommission = self.safe_number(market, 'makerCommission')
             takerCommission = self.safe_number(market, 'takerCommission')
             maxQuoteAmount = self.safe_number(market, 'maxQuoteAmount')
@@ -725,11 +733,11 @@ class mexc3(Exchange):
                 'settleId': None,
                 'type': 'spot',
                 'spot': True,
-                'margin': False,
+                'margin': isMarginTradingAllowed,
                 'swap': False,
                 'future': False,
                 'option': False,
-                'active': (status == 'ENABLED'),
+                'active': active,
                 'contract': False,
                 'linear': None,
                 'inverse': None,
@@ -2009,6 +2017,7 @@ class mexc3(Exchange):
         :param int|None since: the earliest time in ms to fetch open orders for
         :param int|None limit: the maximum number of  open orders structures to retrieve
         :param dict params: extra parameters specific to the mexc3 api endpoint
+        :param str|None params['marginMode']: only 'isolated' is supported, for spot-margin trading
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         await self.load_markets()
@@ -2017,11 +2026,18 @@ class mexc3(Exchange):
         if symbol is not None:
             market = self.market(symbol)
             request['symbol'] = market['id']
-        marketType, query = self.handle_market_type_and_params('fetchOpenOrders', market, params)
+        marketType = None
+        marketType, params = self.handle_market_type_and_params('fetchOpenOrders', market, params)
         if marketType == 'spot':
             if symbol is None:
                 raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument for spot market')
-            response = await self.spotPrivateGetOpenOrders(self.extend(request, query))
+            method = 'spotPrivateGetOpenOrders'
+            marginMode, query = self.handle_margin_mode_and_params('fetchOpenOrders', params)
+            if marginMode is not None:
+                method = 'spotPrivateGetMarginOpenOrders'
+                if marginMode == 'cross':
+                    raise BadRequest(self.id + ' fetchOpenOrders() supports isolated margin mode only for spot-margin trading')
+            response = await getattr(self, method)(self.extend(request, query))
             #
             # spot
             #
@@ -2045,6 +2061,28 @@ class mexc3(Exchange):
             #             "updateTime": null,
             #             "isWorking": True,
             #             "origQuoteOrderQty": "9"
+            #         }
+            #     ]
+            #
+            # margin
+            #
+            #     [
+            #         {
+            #             "symbol": "BTCUSDT",
+            #             "orderId": "764547676405633024",
+            #             "orderListId": "-1",
+            #             "clientOrderId": null,
+            #             "price": "18000",
+            #             "origQty": "0.0013",
+            #             "executedQty": "0",
+            #             "cummulativeQuoteQty": "0",
+            #             "status": "NEW",
+            #             "type": "LIMIT",
+            #             "side": "BUY",
+            #             "isIsolated": True,
+            #             "isWorking": True,
+            #             "time": 1662448836000,
+            #             "updateTime": 1662448836000
             #         }
             #     ]
             #
@@ -2189,17 +2227,27 @@ class mexc3(Exchange):
         cancel all open orders
         :param str|None symbol: unified market symbol, only orders in the market of self symbol are cancelled when symbol is not None
         :param dict params: extra parameters specific to the mexc3 api endpoint
+        :param str|None params['marginMode']: only 'isolated' is supported for spot-margin trading
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         await self.load_markets()
         market = self.market(symbol) if (symbol is not None) else None
         request = {}
-        marketType, query = self.handle_market_type_and_params('cancelAllOrders', market, params)
+        marketType = None
+        marketType, params = self.handle_market_type_and_params('cancelAllOrders', market, params)
+        marginMode, query = self.handle_margin_mode_and_params('cancelAllOrders', params)
         if marketType == 'spot':
             if symbol is None:
                 raise ArgumentsRequired(self.id + ' cancelAllOrders() requires a symbol argument on spot')
             request['symbol'] = market['id']
-            response = await self.spotPrivateDeleteOpenOrders(self.extend(request, query))
+            method = 'spotPrivateDeleteOpenOrders'
+            if marginMode is not None:
+                method = 'spotPrivateDeleteMarginOpenOrders'
+                if marginMode == 'cross':
+                    raise BadRequest(self.id + ' cancelAllOrders() supports isolated margin mode only for spot-margin trading')
+            response = await getattr(self, method)(self.extend(request, query))
+            #
+            # spot
             #
             #     [
             #         {
@@ -2210,6 +2258,28 @@ class mexc3(Exchange):
             #             "type": "LIMIT",
             #             "side": "BUY"
             #         },
+            #     ]
+            #
+            # margin
+            #
+            #     [
+            #         {
+            #             "symbol": "BTCUSDT",
+            #             "orderId": "762640232574226432",
+            #             "orderListId": "-1",
+            #             "clientOrderId": null,
+            #             "price": "18000",
+            #             "origQty": "0.00147",
+            #             "executedQty": "0",
+            #             "cummulativeQuoteQty": "0",
+            #             "status": "NEW",
+            #             "type": "LIMIT",
+            #             "side": "BUY",
+            #             "isIsolated": True,
+            #             "isWorking": True,
+            #             "time": 1661994066000,
+            #             "updateTime": 1661994066000
+            #         }
             #     ]
             #
             return self.parse_orders(response, market)
@@ -2259,6 +2329,26 @@ class mexc3(Exchange):
         #         "origQty": "0.0002",
         #         "type": "LIMIT",
         #         "side": "BUY"
+        #     }
+        #
+        # margin: cancelAllOrders
+        #
+        #     {
+        #         "symbol": "BTCUSDT",
+        #         "orderId": "762640232574226432",
+        #         "orderListId": "-1",
+        #         "clientOrderId": null,
+        #         "price": "18000",
+        #         "origQty": "0.00147",
+        #         "executedQty": "0",
+        #         "cummulativeQuoteQty": "0",
+        #         "status": "NEW",
+        #         "type": "LIMIT",
+        #         "side": "BUY",
+        #         "isIsolated": True,
+        #         "isWorking": True,
+        #         "time": 1661994066000,
+        #         "updateTime": 1661994066000
         #     }
         #
         # spot: fetchOrder, fetchOpenOrders, fetchOrders
