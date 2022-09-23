@@ -184,6 +184,9 @@ class mexc3 extends Exchange {
                             'margin/forceLiquidationRec' => 1,
                             'margin/isolatedMarginData' => 1,
                             'margin/isolatedMarginTier' => 1,
+                            'rebate/taxQuery' => 1,
+                            'rebate/detail' => 1,
+                            'rebate/detail/kickback' => 1,
                         ),
                         'post' => array(
                             'order' => 1,
@@ -3561,7 +3564,7 @@ class mexc3 extends Exchange {
         //
         $data = $this->safe_value($response, 'data', array());
         $resultList = $this->safe_value($data, 'result_list', array());
-        return $this->parse_transactions($resultList, $code, $since, $limit);
+        return $this->parse_transactions($resultList, $currency, $since, $limit);
     }
 
     public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
@@ -3620,7 +3623,7 @@ class mexc3 extends Exchange {
         //
         $data = $this->safe_value($response, 'data', array());
         $resultList = $this->safe_value($data, 'result_list', array());
-        return $this->parse_transactions($resultList, $code, $since, $limit);
+        return $this->parse_transactions($resultList, $currency, $since, $limit);
     }
 
     public function parse_transaction($transaction, $currency = null) {

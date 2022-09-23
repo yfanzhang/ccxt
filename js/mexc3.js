@@ -179,6 +179,9 @@ module.exports = class mexc3 extends Exchange {
                             'margin/forceLiquidationRec': 1,
                             'margin/isolatedMarginData': 1,
                             'margin/isolatedMarginTier': 1,
+                            'rebate/taxQuery': 1,
+                            'rebate/detail': 1,
+                            'rebate/detail/kickback': 1,
                         },
                         'post': {
                             'order': 1,
@@ -3624,7 +3627,7 @@ module.exports = class mexc3 extends Exchange {
         //
         const data = this.safeValue (response, 'data', {});
         const resultList = this.safeValue (data, 'result_list', []);
-        return this.parseTransactions (resultList, code, since, limit);
+        return this.parseTransactions (resultList, currency, since, limit);
     }
 
     async fetchWithdrawals (code = undefined, since = undefined, limit = undefined, params = {}) {
@@ -3685,7 +3688,7 @@ module.exports = class mexc3 extends Exchange {
         //
         const data = this.safeValue (response, 'data', {});
         const resultList = this.safeValue (data, 'result_list', []);
-        return this.parseTransactions (resultList, code, since, limit);
+        return this.parseTransactions (resultList, currency, since, limit);
     }
 
     parseTransaction (transaction, currency = undefined) {

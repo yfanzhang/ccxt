@@ -137,10 +137,10 @@ module.exports = class aax extends Exchange {
                     'public': 'https://api.{hostname}',
                     'private': 'https://api.{hostname}',
                 },
-                'www': 'https://www.aaxpro.com', // string website URL
-                'doc': 'https://www.aaxpro.com/apidoc/index.html',
-                'fees': 'https://www.aaxpro.com/en-US/fees/',
-                'referral': 'https://www.aaxpro.com/invite/sign-up?inviteCode=JXGm5Fy7R2MB',
+                'www': 'https://www.aax.com', // string website URL
+                'doc': 'https://www.aax.com/apidoc/index.html',
+                'fees': 'https://www.aax.com/en-US/vip/',
+                'referral': 'https://www.aax.com/invite/sign-up?inviteCode=JXGm5Fy7R2MB',
             },
             'api': {
                 'v1': {
@@ -2376,7 +2376,7 @@ module.exports = class aax extends Exchange {
         //     "ts": 1573561743499
         // }
         const data = this.safeValue (response, 'data', []);
-        return this.parseTransactions (data, code, since, limit);
+        return this.parseTransactions (data, currency, since, limit);
     }
 
     async fetchWithdrawals (code = undefined, since = undefined, limit = undefined, params = {}) {
@@ -2429,7 +2429,7 @@ module.exports = class aax extends Exchange {
         //     "ts":1573561743499
         //  }
         const data = this.safeValue (response, 'data', []);
-        return this.parseTransactions (data, code, since, limit);
+        return this.parseTransactions (data, currency, since, limit);
     }
 
     parseTransactionStatusByType (status, type = undefined) {

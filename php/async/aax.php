@@ -141,10 +141,10 @@ class aax extends Exchange {
                     'public' => 'https://api.{hostname}',
                     'private' => 'https://api.{hostname}',
                 ),
-                'www' => 'https://www.aaxpro.com', // string website URL
-                'doc' => 'https://www.aaxpro.com/apidoc/index.html',
-                'fees' => 'https://www.aaxpro.com/en-US/fees/',
-                'referral' => 'https://www.aaxpro.com/invite/sign-up?inviteCode=JXGm5Fy7R2MB',
+                'www' => 'https://www.aax.com', // string website URL
+                'doc' => 'https://www.aax.com/apidoc/index.html',
+                'fees' => 'https://www.aax.com/en-US/vip/',
+                'referral' => 'https://www.aax.com/invite/sign-up?inviteCode=JXGm5Fy7R2MB',
             ),
             'api' => array(
                 'v1' => array(
@@ -2332,7 +2332,7 @@ class aax extends Exchange {
         //     "ts" => 1573561743499
         // }
         $data = $this->safe_value($response, 'data', array());
-        return $this->parse_transactions($data, $code, $since, $limit);
+        return $this->parse_transactions($data, $currency, $since, $limit);
     }
 
     public function fetch_withdrawals($code = null, $since = null, $limit = null, $params = array ()) {
@@ -2383,7 +2383,7 @@ class aax extends Exchange {
         //     "ts":1573561743499
         //  }
         $data = $this->safe_value($response, 'data', array());
-        return $this->parse_transactions($data, $code, $since, $limit);
+        return $this->parse_transactions($data, $currency, $since, $limit);
     }
 
     public function parse_transaction_status_by_type($status, $type = null) {

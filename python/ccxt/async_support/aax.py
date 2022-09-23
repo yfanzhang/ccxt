@@ -149,10 +149,10 @@ class aax(Exchange):
                     'public': 'https://api.{hostname}',
                     'private': 'https://api.{hostname}',
                 },
-                'www': 'https://www.aaxpro.com',  # string website URL
-                'doc': 'https://www.aaxpro.com/apidoc/index.html',
-                'fees': 'https://www.aaxpro.com/en-US/fees/',
-                'referral': 'https://www.aaxpro.com/invite/sign-up?inviteCode=JXGm5Fy7R2MB',
+                'www': 'https://www.aax.com',  # string website URL
+                'doc': 'https://www.aax.com/apidoc/index.html',
+                'fees': 'https://www.aax.com/en-US/vip/',
+                'referral': 'https://www.aax.com/invite/sign-up?inviteCode=JXGm5Fy7R2MB',
             },
             'api': {
                 'v1': {
@@ -2246,7 +2246,7 @@ class aax(Exchange):
         #     "ts": 1573561743499
         # }
         data = self.safe_value(response, 'data', [])
-        return self.parse_transactions(data, code, since, limit)
+        return self.parse_transactions(data, currency, since, limit)
 
     async def fetch_withdrawals(self, code=None, since=None, limit=None, params={}):
         """
@@ -2294,7 +2294,7 @@ class aax(Exchange):
         #     "ts":1573561743499
         #  }
         data = self.safe_value(response, 'data', [])
-        return self.parse_transactions(data, code, since, limit)
+        return self.parse_transactions(data, currency, since, limit)
 
     def parse_transaction_status_by_type(self, status, type=None):
         statuses = {

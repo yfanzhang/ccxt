@@ -189,6 +189,9 @@ class mexc3(Exchange):
                             'margin/forceLiquidationRec': 1,
                             'margin/isolatedMarginData': 1,
                             'margin/isolatedMarginTier': 1,
+                            'rebate/taxQuery': 1,
+                            'rebate/detail': 1,
+                            'rebate/detail/kickback': 1,
                         },
                         'post': {
                             'order': 1,
@@ -3373,7 +3376,7 @@ class mexc3(Exchange):
         #
         data = self.safe_value(response, 'data', {})
         resultList = self.safe_value(data, 'result_list', [])
-        return self.parse_transactions(resultList, code, since, limit)
+        return self.parse_transactions(resultList, currency, since, limit)
 
     def fetch_withdrawals(self, code=None, since=None, limit=None, params={}):
         """
@@ -3428,7 +3431,7 @@ class mexc3(Exchange):
         #
         data = self.safe_value(response, 'data', {})
         resultList = self.safe_value(data, 'result_list', [])
-        return self.parse_transactions(resultList, code, since, limit)
+        return self.parse_transactions(resultList, currency, since, limit)
 
     def parse_transaction(self, transaction, currency=None):
         #
